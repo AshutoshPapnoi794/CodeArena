@@ -150,27 +150,7 @@
             updateButtonText(savedPreference);
             // --- END OF TOGGLE LOGIC ---
 
-            const progressTracker = {
-                getSolvedMap: () => {
-                    const solved = localStorage.getItem('solvedProblems');
-                    return solved ? new Map(Object.entries(JSON.parse(solved))) : new Map();
-                },
-                saveSolvedMap: (solvedMap) => {
-                    localStorage.setItem('solvedProblems', JSON.stringify(Object.fromEntries(solvedMap)));
-                },
-                toggleProblem: (problemId, isSolved) => {
-                    const solvedMap = progressTracker.getSolvedMap();
-                    const key = String(problemId);
-                    if (isSolved) {
-                        if (!solvedMap.has(key)) {
-                            solvedMap.set(key, { solved_at: new Date().toISOString() });
-                        }
-                    } else {
-                        solvedMap.delete(key);
-                    }
-                    progressTracker.saveSolvedMap(solvedMap);
-                }
-            };
+            let solvedProblemIds = new Set();
 
             const getDifficultyBadge = (difficulty) => {
                 if (difficulty === 'Easy') return `<span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-900/80 text-green-300">Easy</span>`;
@@ -178,60 +158,56 @@
                 return `<span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-900/80 text-red-300">Hard</span>`;
             };
 
-            const createAndAppendRow = (problem, isNew = false) => {
-                const row = document.createElement('tr');
-                row.className = 'problem-row';
-                if (isNew) {
-                    row.classList.add('new-row');
-                }
-                
-                const topicsHtml = problem.Topics.map(topic => 
-                    `<span class="px-2 py-1 text-xs rounded-md bg-gray-700 text-gray-300">${topic}</span>`
-                ).join('');
-
-                const similarHtml = (problem.SimilarQuestions && problem.SimilarQuestions.length > 0)
-                    ? problem.SimilarQuestions.map(q => 
-                        `<a href="${q.Link}" target="_blank" class="similar-tag inline-block px-2 py-1 text-xs rounded-md">${q.title}</a>`
-                      ).join('')
-                    : `<span class="text-xs text-gray-500">None</span>`;
-
-                row.innerHTML = `
-                    <td class="px-4 py-4 whitespace-nowrap text-center">
-                        <input type="checkbox" class="h-5 w-5 rounded custom-checkbox" data-problem-id="${problem.ID}">
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <a href="${problem.Link}" target="_blank" class="problem-title text-base font-semibold text-indigo-400 hover:text-indigo-300">${problem.Title}</a>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">${getDifficultyBadge(problem.Difficulty)}</td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                         <div class="flex items-center">
-                            <svg class="w-4 h-4 text-green-400 mr-1.5" fill="currentColor" viewBox="0 0 20 20"><path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.562 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.821 2.333L6 10.333z"/></svg>
-                            <span class="text-sm font-medium text-gray-300">${problem.adjusted_like_ratio.toFixed(1)}%</span>
-                        </div>
-                    </td>
-                    <td class="px-6 py-4 max-w-sm whitespace-normal"><div class="flex flex-wrap gap-2">${topicsHtml}</div></td>
-                    <td class="px-6 py-4 max-w-sm whitespace-normal"><div class="flex flex-wrap gap-2">${similarHtml}</div></td>
-                `;
-                tableBody.appendChild(row);
-                return row;
-            };
-
-            const updateView = () => {
-                const solvedMap = progressTracker.getSolvedMap();
-                const firstUnsolvedIndex = problemPool.findIndex(p => !solvedMap.has(String(p.ID)));
-
+            const renderTable = () => {
+                const existingRowCount = tableBody.rows.length;
                 tableBody.innerHTML = '';
                 
+                const firstUnsolvedIndex = problemPool.findIndex(p => !solvedProblemIds.has(String(p.ID)));
+
                 const problemsToDisplay = (firstUnsolvedIndex === -1) 
                     ? problemPool
                     : problemPool.slice(0, firstUnsolvedIndex + 1);
 
-                problemsToDisplay.forEach(problem => {
-                    const row = createAndAppendRow(problem);
+                problemsToDisplay.forEach((problem, index) => {
+                    const row = document.createElement('tr');
+                    row.className = 'problem-row';
+                    
+                    const topicsHtml = problem.Topics.map(topic => 
+                        `<span class="px-2 py-1 text-xs rounded-md bg-gray-700 text-gray-300">${topic}</span>`
+                    ).join('');
+
+                    const similarHtml = (problem.SimilarQuestions && problem.SimilarQuestions.length > 0)
+                        ? problem.SimilarQuestions.map(q => 
+                            `<a href="${q.Link}" target="_blank" class="similar-tag inline-block px-2 py-1 text-xs rounded-md">${q.title}</a>`
+                          ).join('')
+                        : `<span class="text-xs text-gray-500">None</span>`;
+
+                    row.innerHTML = `
+                        <td class="px-4 py-4 whitespace-nowrap text-center">
+                            <input type="checkbox" class="h-5 w-5 rounded custom-checkbox" data-problem-id="${problem.ID}">
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <a href="${problem.Link}" target="_blank" class="problem-title text-base font-semibold text-indigo-400 hover:text-indigo-300">${problem.Title}</a>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">${getDifficultyBadge(problem.Difficulty)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                             <div class="flex items-center">
+                                <svg class="w-4 h-4 text-green-400 mr-1.5" fill="currentColor" viewBox="0 0 20 20"><path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.562 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.821 2.333L6 10.333z"/></svg>
+                                <span class="text-sm font-medium text-gray-300">${problem.adjusted_like_ratio.toFixed(1)}%</span>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 max-w-sm whitespace-normal"><div class="flex flex-wrap gap-2">${topicsHtml}</div></td>
+                        <td class="px-6 py-4 max-w-sm whitespace-normal"><div class="flex flex-wrap gap-2">${similarHtml}</div></td>
+                    `;
                     const checkbox = row.querySelector('input[type="checkbox"]');
-                    if (solvedMap.has(String(problem.ID))) {
+                    if (solvedProblemIds.has(String(problem.ID))) {
                         checkbox.checked = true;
                         row.classList.add('problem-solved');
+                    }
+                    tableBody.appendChild(row);
+                    
+                    if (problemsToDisplay.length > existingRowCount && index === problemsToDisplay.length - 1) {
+                         row.classList.add('new-row');
                     }
                 });
                 
@@ -242,31 +218,59 @@
                 }
             };
             
-            tableBody.addEventListener('change', (event) => {
+            async function toggleProblemOnServer(problemId, isSolved) {
+                 try {
+                    const response = await fetch('/api/progress/toggle', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ problem_id: problemId, solved: isSolved })
+                    });
+                    if (!response.ok) throw new Error('Server update failed');
+                    return true;
+                } catch (error) {
+                    console.error('Error toggling progress:', error);
+                    alert('Failed to save progress. Please check your connection and try again.');
+                    return false;
+                }
+            }
+            
+            tableBody.addEventListener('change', async (event) => {
                 if (event.target.matches('input[type="checkbox"]')) {
                     const checkbox = event.target;
                     const problemId = checkbox.dataset.problemId;
+                    const isSolved = checkbox.checked;
                     
-                    const row = checkbox.closest('.problem-row');
-                    if (row) {
-                        row.classList.toggle('problem-solved', checkbox.checked);
-                    }
-                    
-                    progressTracker.toggleProblem(problemId, checkbox.checked);
-                    
-                    if (checkbox.checked) {
-                        const solvedMap = progressTracker.getSolvedMap();
-                        const firstUnsolvedIndex = problemPool.findIndex(p => !solvedMap.has(String(p.ID)));
+                    const success = await toggleProblemOnServer(problemId, isSolved);
 
-                        if (firstUnsolvedIndex !== -1 && firstUnsolvedIndex >= tableBody.rows.length) {
-                             const newProblem = problemPool[firstUnsolvedIndex];
-                             createAndAppendRow(newProblem, true);
+                    if (success) {
+                        checkbox.closest('.problem-row').classList.toggle('problem-solved', isSolved);
+                        const problemIdStr = String(problemId);
+                        if (isSolved) {
+                            solvedProblemIds.add(problemIdStr);
+                            renderTable();
+                        } else {
+                            solvedProblemIds.delete(problemIdStr);
                         }
+                    } else {
+                        checkbox.checked = !isSolved;
                     }
                 }
             });
 
-            updateView();
+            async function initializePage() {
+                try {
+                    const response = await fetch('/api/progress');
+                    if (!response.ok) throw new Error('Failed to fetch progress');
+                    const solvedData = await response.json();
+                    solvedProblemIds = new Set(Object.keys(solvedData));
+                    renderTable();
+                } catch (error) {
+                    console.error("Initialization error:", error);
+                    renderTable();
+                }
+            }
+
+            initializePage();
         });
     </script>
 </body>
