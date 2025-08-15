@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive DSA Roadmap</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-color: #1e1b34;
+            --accent-purple: #a78bfa;
+            --accent-teal: #2dd4bf;
+            --text-color: #e5e7eb;
+            --locked-color: #374151;
+            --glass-border: rgba(167, 139, 250, 0.3);
+        }
+        body { font-family: 'Inter', sans-serif; background-color: var(--bg-color); color: var(--text-color); overflow: hidden; }
+        #particles-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
+        #graph-container { width: 100vw; height: 100vh; position: relative; z-index: 1; cursor: grab; }
+        #graph-container:active { cursor: grabbing; }
+        .ui-overlay { position: absolute; bottom: 2rem; left: 50%; transform: translateX(-50%); z-index: 10; }
+        .glass-panel {
+            background-color: rgba(23, 21, 43, 0.6); backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px); border: 1px solid var(--glass-border);
+            border-radius: 1.25rem; 
+            padding: 1rem 2rem;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            display: flex; align-items: center; gap: 1.5rem;
+        }
+        .instructions { font-size: 1rem; color: #d1d5db; font-weight: 500; pointer-events: none; }
+        #reset-button {
+            background-color: transparent; 
+            color: var(--accent-purple);
+            padding: 0.75rem 1.5rem;
+            border: 1px solid var(--accent-purple); border-radius: 1rem; font-weight: 600;
+            cursor: pointer; transition: all 0.2s ease-in-out;
+        }
+        #reset-button:hover { 
+            background-color: var(--accent-purple);
+            color: white;
+            box-shadow: 0 0 15px rgba(167, 139, 250, 0.5);
+        }
+        .graph-tooltip {
+            position: absolute; text-align: left; width: auto; height: auto;
+            padding: 8px 12px; font-size: 14px; font-weight: 500;
+            background: #111827; border: 1px solid #4b5563; border-radius: 8px;
+            pointer-events: none; opacity: 0; transition: opacity 0.2s;
+            color: white; white-space: pre;
+        }
+        .completed > .node-background {
+            stroke: url(#progress-gradient) !important;
+            stroke-width: 3px !important;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center">
+    <!-- NEW: User Authentication Navigation -->
+    <div class="absolute top-0 right-0 p-6 z-20">
+        {% if current_user.is_authenticated %}
+            <div class="flex items-center space-x-4">
+                <span class="text-gray-300 font-medium">Welcome, {{ current_user.username }}!</span>
+                <a href="{{ url_for('logout') }}" class="px-4 py-2 text-sm font-semibold text-white bg-red-600/80 hover:bg-red-700/80 rounded-lg transition-colors">Logout</a>
+            </div>
+        {% else %}
+            <a href="{{ url_for('login') }}" class="px-4 py-2 text-sm font-semibold text-white bg-indigo-600/80 hover:bg-indigo-700/80 rounded-lg transition-colors">Login</a>
+        {% endif %}
+    </div>
+
+    <div id="particles-bg"></div>
+    <div id="graph-container"></div>
+    <div class="graph-tooltip"></div>
+    <div class="ui-overlay">
+        <div class="glass-panel">
+            <button id="reset-button">Reset View</button>
+            <div class="instructions">
+                Scroll to Zoom • Click & Drag to Pan
+                <span class="ml-4 pl-4 border-l border-gray-600">
+                    Node progress bar shows completed problems
+                </span>
+            </div>
+        </div>
+    </div>
+    <script> const topicProblemsMap = {{ topic_problems_map | safe }}; </script>
+    <script> const problem_details = {{ problem_details | safe }}; </script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tsparticles@2/tsparticles.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/graph.js') }}"></script>
+</body>
+</html>

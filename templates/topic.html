@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ topic_name }} Problems</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #1e1b34; }
+        .custom-checkbox { accent-color: #a78bfa; transition: all 0.2s ease-in-out; }
+        .custom-checkbox:hover { transform: scale(1.1); }
+        /* A subtle animation for newly added rows */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .new-row {
+            animation: fadeIn 0.4s ease-out;
+        }
+        
+        /* CSS FOR THE STRIKETHROUGH ANIMATION */
+        .problem-title {
+            position: relative; /* Necessary for the pseudo-element */
+            transition: color 0.3s ease-in-out;
+        }
+        .problem-title::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: #a78bfa; /* A nice purple color */
+            
+            /* Initial state: "drawn" from the left, but scaled to zero width */
+            transform: scaleX(0);
+            transform-origin: left;
+            
+            /* The animation definition */
+            transition: transform 0.35s cubic-bezier(0.65, 0, 0.35, 1);
+        }
+        /* When the parent row has the 'problem-solved' class... */
+        .problem-solved .problem-title {
+            color: #6b7280; /* Fade the text color to a gray */
+        }
+        .problem-solved .problem-title::after {
+            /* Final state: Animate the line to full width */
+            transform: scaleX(1);
+        }
+
+        /* Styling for similar question tags */
+        .similar-tag {
+            background-color: #374151;
+            color: #d1d5db;
+            transition: all 0.2s ease-in-out;
+        }
+        .similar-tag:hover {
+            background-color: #4b5563;
+            color: #f9fafb;
+            transform: translateY(-1px);
+        }
+
+        /* CSS TO HIDE/SHOW THE SIMILAR QUESTIONS COLUMN */
+        /* Hide the 6th column (header and cells) by default */
+        .problem-table th:nth-child(6),
+        .problem-table td:nth-child(6) {
+            display: none;
+        }
+        
+        /* When the table has the 'show-similar' class, reveal the 6th column */
+        .problem-table.show-similar th:nth-child(6),
+        .problem-table.show-similar td:nth-child(6) {
+            display: table-cell;
+        }
+
+    </style>
+</head>
+<body class="text-gray-200">
+    <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div class="flex flex-col sm:flex-row justify-between items-center mb-6">
+            <h1 class="text-4xl sm:text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-indigo-400 mb-4 sm:mb-0">
+                {{ topic_name }}
+            </h1>
+            <div class="flex items-center space-x-4 mt-4 sm:mt-0">
+                <button id="toggle-similar-btn" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500">
+                    Show Similar
+                </button>
+                <a href="{{ url_for('index') }}" class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-xl shadow-sm text-white bg-gray-700/50 hover:bg-gray-600/50 transition-colors">
+                    &larr; Back to Roadmap
+                </a>
+            </div>
+        </div>
+        <div class="bg-gray-800/50 border border-gray-700 p-4 rounded-xl mb-8 text-sm text-gray-400">
+            <p><strong class="text-gray-200">Your Guided Path:</strong> Problems are grouped by key patterns. Master each pattern from Easy to Hard before moving to the next.</p>
+            <p class="mt-2">Showing a curated list of up to <strong class="text-white">{{ total_count }}</strong> core problems, sorted for a smooth learning curve.</p>
+        </div>
+        <div class="overflow-x-auto shadow-2xl rounded-2xl border border-gray-700">
+            <table class="min-w-full divide-y divide-gray-700 problem-table">
+                <thead class="bg-gray-800/70">
+                    <tr>
+                        <th scope="col" class="px-4 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Status</th>
+                        <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Title</th>
+                        <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Difficulty</th>
+                        <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Quality</th>
+                        <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Related Topics</th>
+                        <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Similar Questions</th>
+                    </tr>
+                </thead>
+                <tbody id="problem-table-body" class="bg-gray-900/70 divide-y divide-gray-800">
+                    <!-- JavaScript will render problems here dynamically -->
+                </tbody>
+            </table>
+        </div>
+        <div id="completion-message" class="text-center py-8 text-lg text-green-400 font-semibold" style="display: none;">
+            🎉 Congratulations! You've completed all the core problems for this topic! 🎉
+        </div>
+    </div>
+
+    <script>
+        const allProblems = {{ problems | tojson | safe }};
+    </script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const problemPool = allProblems;
+            const tableBody = document.getElementById('problem-table-body');
+            const completionMessageEl = document.getElementById('completion-message');
+
+            // --- LOGIC FOR THE TOGGLE BUTTON ---
+            const toggleBtn = document.getElementById('toggle-similar-btn');
+            const problemTable = document.querySelector('.problem-table');
+            const SIMILAR_VISIBLE_KEY = 'similarQuestionsVisible';
+
+            const updateButtonText = (isVisible) => {
+                toggleBtn.textContent = isVisible ? 'Hide Similar' : 'Show Similar';
+            };
+            
+            toggleBtn.addEventListener('click', () => {
+                const isVisible = problemTable.classList.toggle('show-similar');
+                updateButtonText(isVisible);
+                localStorage.setItem(SIMILAR_VISIBLE_KEY, isVisible);
+            });
+
+            const savedPreference = localStorage.getItem(SIMILAR_VISIBLE_KEY) === 'true';
+            if (savedPreference) {
+                problemTable.classList.add('show-similar');
+            }
+            updateButtonText(savedPreference);
+            // --- END OF TOGGLE LOGIC ---
+
+            const progressTracker = {
+                getSolvedMap: () => {
+                    const solved = localStorage.getItem('solvedProblems');
+                    return solved ? new Map(Object.entries(JSON.parse(solved))) : new Map();
+                },
+                saveSolvedMap: (solvedMap) => {
+                    localStorage.setItem('solvedProblems', JSON.stringify(Object.fromEntries(solvedMap)));
+                },
+                toggleProblem: (problemId, isSolved) => {
+                    const solvedMap = progressTracker.getSolvedMap();
+                    const key = String(problemId);
+                    if (isSolved) {
+                        if (!solvedMap.has(key)) {
+                            solvedMap.set(key, { solved_at: new Date().toISOString() });
+                        }
+                    } else {
+                        solvedMap.delete(key);
+                    }
+                    progressTracker.saveSolvedMap(solvedMap);
+                }
+            };
+
+            const getDifficultyBadge = (difficulty) => {
+                if (difficulty === 'Easy') return `<span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-900/80 text-green-300">Easy</span>`;
+                if (difficulty === 'Medium') return `<span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-900/80 text-yellow-300">Medium</span>`;
+                return `<span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-900/80 text-red-300">Hard</span>`;
+            };
+
+            const createAndAppendRow = (problem, isNew = false) => {
+                const row = document.createElement('tr');
+                row.className = 'problem-row';
+                if (isNew) {
+                    row.classList.add('new-row');
+                }
+                
+                const topicsHtml = problem.Topics.map(topic => 
+                    `<span class="px-2 py-1 text-xs rounded-md bg-gray-700 text-gray-300">${topic}</span>`
+                ).join('');
+
+                const similarHtml = (problem.SimilarQuestions && problem.SimilarQuestions.length > 0)
+                    ? problem.SimilarQuestions.map(q => 
+                        `<a href="${q.Link}" target="_blank" class="similar-tag inline-block px-2 py-1 text-xs rounded-md">${q.title}</a>`
+                      ).join('')
+                    : `<span class="text-xs text-gray-500">None</span>`;
+
+                row.innerHTML = `
+                    <td class="px-4 py-4 whitespace-nowrap text-center">
+                        <input type="checkbox" class="h-5 w-5 rounded custom-checkbox" data-problem-id="${problem.ID}">
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <a href="${problem.Link}" target="_blank" class="problem-title text-base font-semibold text-indigo-400 hover:text-indigo-300">${problem.Title}</a>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">${getDifficultyBadge(problem.Difficulty)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                         <div class="flex items-center">
+                            <svg class="w-4 h-4 text-green-400 mr-1.5" fill="currentColor" viewBox="0 0 20 20"><path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.562 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.821 2.333L6 10.333z"/></svg>
+                            <span class="text-sm font-medium text-gray-300">${problem.adjusted_like_ratio.toFixed(1)}%</span>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 max-w-sm whitespace-normal"><div class="flex flex-wrap gap-2">${topicsHtml}</div></td>
+                    <td class="px-6 py-4 max-w-sm whitespace-normal"><div class="flex flex-wrap gap-2">${similarHtml}</div></td>
+                `;
+                tableBody.appendChild(row);
+                return row;
+            };
+
+            const updateView = () => {
+                const solvedMap = progressTracker.getSolvedMap();
+                const firstUnsolvedIndex = problemPool.findIndex(p => !solvedMap.has(String(p.ID)));
+
+                tableBody.innerHTML = '';
+                
+                const problemsToDisplay = (firstUnsolvedIndex === -1) 
+                    ? problemPool
+                    : problemPool.slice(0, firstUnsolvedIndex + 1);
+
+                problemsToDisplay.forEach(problem => {
+                    const row = createAndAppendRow(problem);
+                    const checkbox = row.querySelector('input[type="checkbox"]');
+                    if (solvedMap.has(String(problem.ID))) {
+                        checkbox.checked = true;
+                        row.classList.add('problem-solved');
+                    }
+                });
+                
+                if (firstUnsolvedIndex === -1 && problemPool.length > 0) {
+                    completionMessageEl.style.display = 'block';
+                } else {
+                    completionMessageEl.style.display = 'none';
+                }
+            };
+            
+            tableBody.addEventListener('change', (event) => {
+                if (event.target.matches('input[type="checkbox"]')) {
+                    const checkbox = event.target;
+                    const problemId = checkbox.dataset.problemId;
+                    
+                    const row = checkbox.closest('.problem-row');
+                    if (row) {
+                        row.classList.toggle('problem-solved', checkbox.checked);
+                    }
+                    
+                    progressTracker.toggleProblem(problemId, checkbox.checked);
+                    
+                    if (checkbox.checked) {
+                        const solvedMap = progressTracker.getSolvedMap();
+                        const firstUnsolvedIndex = problemPool.findIndex(p => !solvedMap.has(String(p.ID)));
+
+                        if (firstUnsolvedIndex !== -1 && firstUnsolvedIndex >= tableBody.rows.length) {
+                             const newProblem = problemPool[firstUnsolvedIndex];
+                             createAndAppendRow(newProblem, true);
+                        }
+                    }
+                }
+            });
+
+            updateView();
+        });
+    </script>
+</body>
+</html>

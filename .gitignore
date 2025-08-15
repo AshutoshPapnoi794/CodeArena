@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual Environment
+venv/
+.venv/
+
+# Instance Folder & Database
+# IMPORTANT: Do not commit your database file.
+# It contains user-specific data and will be created automatically.
+instance/
+
+# IDE / Editor configuration
+.vscode/
+.idea/
+
+# OS-specific files
+.DS_Store
