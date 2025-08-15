@@ -11,26 +11,27 @@ import os
 
 # --- APP CONFIGURATION ---
 app = Flask(__name__)
-# Use environment variables for production
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'a_default_secret_key_for_dev')
-# This will use a local SQLite DB if DATABASE_URL is not set in the environment
-basedir = os.path.abspath(os.path.dirname(__file__))
-instance_path = os.path.join(basedir, 'instance')
-os.makedirs(instance_path, exist_ok=True)
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///' + os.path.join(instance_path, 'dsa_progress.db'))
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'a_very_secret_key_for_dev')
+
+# Configure SQLite to use Render's persistent disk path if available, otherwise use a local 'instance' folder.
+RENDER_INSTANCE_DIR = os.environ.get('RENDER_INSTANCE_DIR', os.path.join(os.path.abspath(os.path.dirname(__file__)), 'instance'))
+if not os.path.exists(RENDER_INSTANCE_DIR):
+    os.makedirs(RENDER_INSTANCE_DIR)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(RENDER_INSTANCE_DIR, 'dsa_progress.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # --- EXTENSIONS INITIALIZATION ---
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
-migrate = Migrate(app, db) # Initialize Migrate
+migrate = Migrate(app, db)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 login_manager.login_message_category = 'info'
 
 DATA = pd.DataFrame()
 
-# --- DATABASE MODELS (Unchanged) ---
+# --- DATABASE MODELS ---
 class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(20), unique=True, nullable=False)
@@ -48,15 +49,8 @@ class SolvedProblem(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# --- DATA LOADING & SCORING LOGIC (Unchanged) ---
-THEMATIC_SUBTOPICS = {
-    "arrays-hashing": [{"name": "Prefix Sum", "tags": ["Prefix Sum"]}, {"name": "Hash Table / Set Usage", "tags": ["Hash Table", "Counting"]}, {"name": "General Array & String Manipulation", "tags": ["Array", "String"]},],
-    "two-pointers": [{"name": "Two Pointers", "tags": ["Two Pointers"]}], "stack": [{"name": "Monotonic Stack", "tags": ["Monotonic Stack"]}, {"name": "Core Stack Problems", "tags": ["Stack"]},], "binary-search": [{"name": "Binary Search", "tags": ["Binary Search"]}],
-    "sliding-window": [{"name": "Monotonic Queue", "tags": ["Monotonic Queue"]}, {"name": "Sliding Window", "tags": ["Sliding Window"]},], "linked-list": [{"name": "Linked List", "tags": ["Linked List"]}],
-    "trees": [{"name": "Binary Search Tree", "tags": ["Binary Search Tree"]}, {"name": "Traversal & Core Concepts (DFS/BFS)", "tags": ["Tree", "Binary Tree"]},],
-    "graphs": [{"name": "Union Find", "tags": ["Union Find"]}, {"name": "Core Traversal (DFS/BFS)", "tags": ["Depth-First Search", "Breadth-First Search"]}, {"name": "General Graph Theory", "tags": ["Graph"]},],
-    "1-d-dp": [{"name": "1-D Dynamic Programming", "tags": ["Dynamic Programming"]}], "2-d-dp": [{"name": "2-D Dynamic Programming", "tags": ["Dynamic Programming"]}],
-}
+# --- DATA LOADING & SCORING LOGIC ---
+THEMATIC_SUBTOPICS = { "arrays-hashing": [{"name": "Prefix Sum", "tags": ["Prefix Sum"]}, {"name": "Hash Table / Set Usage", "tags": ["Hash Table", "Counting"]}, {"name": "General Array & String Manipulation", "tags": ["Array", "String"]},], "two-pointers": [{"name": "Two Pointers", "tags": ["Two Pointers"]}], "stack": [{"name": "Monotonic Stack", "tags": ["Monotonic Stack"]}, {"name": "Core Stack Problems", "tags": ["Stack"]},], "binary-search": [{"name": "Binary Search", "tags": ["Binary Search"]}], "sliding-window": [{"name": "Monotonic Queue", "tags": ["Monotonic Queue"]}, {"name": "Sliding Window", "tags": ["Sliding Window"]},], "linked-list": [{"name": "Linked List", "tags": ["Linked List"]}], "trees": [{"name": "Binary Search Tree", "tags": ["Binary Search Tree"]}, {"name": "Traversal & Core Concepts (DFS/BFS)", "tags": ["Tree", "Binary Tree"]},], "graphs": [{"name": "Union Find", "tags": ["Union Find"]}, {"name": "Core Traversal (DFS/BFS)", "tags": ["Depth-First Search", "Breadth-First Search"]}, {"name": "General Graph Theory", "tags": ["Graph"]},], "1-d-dp": [{"name": "1-D Dynamic Programming", "tags": ["Dynamic Programming"]}], "2-d-dp": [{"name": "2-D Dynamic Programming", "tags": ["Dynamic Programming"]}], }
 PROBLEM_LIMIT_PER_TOPIC=75; DIFFICULTY_QUOTAS={'Easy':0.35,'Medium':0.45,'Hard':0.20}; CLASSIC_PROBLEM_IDS={1,2,3,5,11,15,17,19,20,21,22,23,33,42,46,49,53,56,57,70,75,76,78,79,98,102,103,104,105,121,125,128,133,139,141,146,152,198,199,200,206,207,208,215,235,236,238,239,295,297,322,416,560,621,704,973,1448}; TOPIC_TIERS={'Array':0,'String':0,'Math':0,'Sorting':0,'Simulation':0,'Hash Table':1,'Two Pointers':1,'Stack':1,'Binary Search':1,'Sliding Window':1,'Linked List':1,'Queue':1,'Prefix Sum':1,'Counting':1,'Tree':2,'Binary Tree':2,'Binary Search Tree':2,'Depth-First Search':2,'Breadth-First Search':2,'Backtracking':2,'Recursion':2,'Greedy':3,'Dynamic Programming':3,'Graph':3,'Trie':3,'Union Find':3,'Heap (Priority Queue)':3,'Divide and Conquer':3,'Memoization':3,'Segment Tree':4,'Binary Indexed Tree':4,'Topological Sort':4,'Shortest Path':4,'Minimum Spanning Tree':4,'Line Sweep':4,'Ordered Set':4,'Monotonic Stack':4,'Monotonic Queue':4,'Bit Manipulation':5,'Geometry':5,'Combinatorics':5,'Number Theory':5,'Database':99,'Concurrency':99,'Interactive':99,'Shell':99}; PRIMARY_TOPIC_MAP={"Arrays & Hashing":["Array","Hash Table","String","Prefix Sum"],"Two Pointers":["Two Pointers"],"Stack":["Stack","Monotonic Stack"],"Binary Search":["Binary Search"],"Sliding Window":["Sliding Window","Monotonic Queue"],"Linked List":["Linked List"],"Trees":["Tree","Binary Tree","Binary Search Tree"],"Tries":["Trie"],"Heap / Priority Queue":["Heap (Priority Queue)"],"Backtracking":["Backtracking"],"Intervals":["Intervals"],"Greedy":["Greedy"],"Advanced Graphs":["Shortest Path","Topological Sort","Minimum Spanning Tree"],"Graphs":["Graph","Depth-First Search","Breadth-First Search","Union Find"],"1-D DP":["Dynamic Programming"],"2-D DP":["Dynamic Programming"],"Bit Manipulation":["Bit Manipulation"],"Math & Geometry":["Math","Geometry"]}; SLUG_TO_NAME_MAP={"arrays-hashing":"Arrays & Hashing","two-pointers":"Two Pointers","stack":"Stack","binary-search":"Binary Search","sliding-window":"Sliding Window","linked-list":"Linked List","trees":"Trees","tries":"Tries","heap-priority-queue":"Heap / Priority Queue","backtracking":"Backtracking","intervals":"Intervals","greedy":"Greedy","advanced-graphs":"Advanced Graphs","graphs":"Graphs","1-d-dp":"1-D DP","2-d-dp":"2-D DP","bit-manipulation":"Bit Manipulation","math-geometry":"Math & Geometry"}; ROADMAP_TOPIC_LEVEL={"Arrays & Hashing":1,"Two Pointers":1,"Stack":1,"Binary Search":1,"Sliding Window":1,"Linked List":1,"Trees":2,"Tries":3,"Heap / Priority Queue":3,"Backtracking":2,"Intervals":3,"Greedy":3,"Graphs":3,"Advanced Graphs":4,"1-D DP":3,"2-D DP":3,"Bit Manipulation":5,"Math & Geometry":5}; SPECIFIC_PATTERN_TAGS=set(sum([tags for name,tags in PRIMARY_TOPIC_MAP.items() if name not in["Arrays & Hashing","Math & Geometry"]],[]));
 def adjusted_like_ratio(row): total_votes=row['Likes']+row['Dislikes']; return 0 if total_votes==0 else(row['Likes']/total_votes*min(total_votes/2000,1.0)*100);
 def get_acceptance_rate_bonus(row): rate=row.get('AcceptanceRate',0); return 10 if(row['Difficulty']=='Easy'and 60<rate<85)or(row['Difficulty']=='Medium'and 40<rate<70)or(row['Difficulty']=='Hard'and 25<rate<50)else 0;
@@ -108,7 +102,6 @@ def get_curated_problems_for_topic(topic_slug):
     return final_ordered_problems
 load_data()
 
-# --- AUTHENTICATION & APP ROUTES ---
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated: return redirect(url_for('index'))
@@ -159,6 +152,9 @@ def toggle_progress():
     if is_solved and not existing_entry: new_solved = SolvedProblem(user_id=current_user.id, problem_id=problem_id); db.session.add(new_solved)
     elif not is_solved and existing_entry: db.session.delete(existing_entry)
     db.session.commit(); return jsonify({'status': 'success'})
+
+with app.app_context():
+    db.create_all()
 
 if __name__ == '__main__':
     app.run(debug=True)
