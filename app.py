@@ -148,10 +148,20 @@ def get_progress():
 def toggle_progress():
     data = request.get_json(); problem_id = data.get('problem_id'); is_solved = data.get('solved')
     if problem_id is None or is_solved is None: return jsonify({'status': 'error', 'message': 'Missing data'}), 400
-    problem_id = int(problem_id); existing_entry = SolvedProblem.query.filter_by(user_id=current_user.id, problem_id=problem_id).first()
-    if is_solved and not existing_entry: new_solved = SolvedProblem(user_id=current_user.id, problem_id=problem_id); db.session.add(new_solved)
-    elif not is_solved and existing_entry: db.session.delete(existing_entry)
-    db.session.commit(); return jsonify({'status': 'success'})
+    problem_id = int(problem_id)
+    existing_entry = SolvedProblem.query.filter_by(user_id=current_user.id, problem_id=problem_id).first()
+
+    # --- OPTIMIZATION ---
+    # Only commit to the DB if the state is actually changing.
+    if is_solved and not existing_entry:
+        new_solved = SolvedProblem(user_id=current_user.id, problem_id=problem_id)
+        db.session.add(new_solved)
+        db.session.commit()
+    elif not is_solved and existing_entry:
+        db.session.delete(existing_entry)
+        db.session.commit()
+
+    return jsonify({'status': 'success'})
 
 # --- REMOVED `with app.app_context()` block ---
 

@@ -247,10 +247,10 @@
                         const problemIdStr = String(problemId);
                         if (isSolved) {
                             solvedProblemIds.add(problemIdStr);
-                            renderTable();
                         } else {
                             solvedProblemIds.delete(problemIdStr);
                         }
+                        renderTable();
                     } else {
                         checkbox.checked = !isSolved;
                     }
