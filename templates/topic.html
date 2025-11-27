@@ -2,276 +2,237 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ topic_name }} Problems</title>
+    <title>{{ topic_name }} // Mastery</title>
+    <!-- SECURITY: CSRF Token for AJAX -->
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #1e1b34; }
-        .custom-checkbox { accent-color: #a78bfa; transition: all 0.2s ease-in-out; }
-        .custom-checkbox:hover { transform: scale(1.1); }
-        /* A subtle animation for newly added rows */
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .new-row {
-            animation: fadeIn 0.4s ease-out;
-        }
+        :root { --bg: #030303; --card: #0a0a0a; --border: rgba(255,255,255,0.08); --primary: #6366f1; --success: #10b981; }
+        body { background: var(--bg); color: #fff; font-family: 'Inter', sans-serif; overflow-x: hidden; }
+
+        /* HUD & Progress */
+        .glass-hud { background: rgba(10, 10, 10, 0.6); backdrop-filter: blur(16px); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 50; }
+        .liquid-bar-bg { background: rgba(255,255,255,0.05); height: 6px; border-radius: 99px; overflow: hidden; position: relative; }
+        .liquid-bar-fill { height: 100%; border-radius: 99px; transition: width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); position: relative; }
+        .liquid-bar-fill::after { content: ''; position: absolute; top: 0; left: 0; bottom: 0; right: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent); transform: translateX(-100%); animation: shimmer 2s infinite; }
+
+        /* Problem Row */
+        .problem-row { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 24px; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); position: relative; overflow: hidden; transform-origin: center; }
+        .problem-row::before { content: ''; position: absolute; inset: 0; background: radial-gradient(600px circle at var(--mouse-x) var(--mouse-y), rgba(255,255,255,0.04), transparent 40%); opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+        .problem-row:hover::before { opacity: 1; }
+        .problem-row:hover { border-color: rgba(255,255,255,0.2); transform: translateY(-2px) scale(1.005); box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5); z-index: 10; }
         
-        /* CSS FOR THE STRIKETHROUGH ANIMATION */
-        .problem-title {
-            position: relative; /* Necessary for the pseudo-element */
-            transition: color 0.3s ease-in-out;
-        }
-        .problem-title::after {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 0;
-            width: 100%;
-            height: 2px;
-            background: #a78bfa; /* A nice purple color */
-            
-            /* Initial state: "drawn" from the left, but scaled to zero width */
-            transform: scaleX(0);
-            transform-origin: left;
-            
-            /* The animation definition */
-            transition: transform 0.35s cubic-bezier(0.65, 0, 0.35, 1);
-        }
-        /* When the parent row has the 'problem-solved' class... */
-        .problem-solved .problem-title {
-            color: #6b7280; /* Fade the text color to a gray */
-        }
-        .problem-solved .problem-title::after {
-            /* Final state: Animate the line to full width */
-            transform: scaleX(1);
-        }
+        .problem-row.solved { background: rgba(16, 185, 129, 0.03); border-color: rgba(16, 185, 129, 0.2); }
+        .problem-row.solved .problem-title { color: #6b7280; }
 
-        /* Styling for similar question tags */
-        .similar-tag {
-            background-color: #374151;
-            color: #d1d5db;
-            transition: all 0.2s ease-in-out;
-        }
-        .similar-tag:hover {
-            background-color: #4b5563;
-            color: #f9fafb;
-            transform: translateY(-1px);
-        }
+        /* Strikethrough */
+        .problem-title { position: relative; display: inline-block; transition: color 0.3s; }
+        .strikethrough-line { position: absolute; top: 50%; left: 0; width: 0%; height: 2px; background: #10b981; border-radius: 2px; transition: width 0.4s cubic-bezier(0.65, 0, 0.35, 1); pointer-events: none; box-shadow: 0 0 8px rgba(16, 185, 129, 0.5); }
+        .problem-row.solved .strikethrough-line { width: 100%; }
 
-        /* CSS TO HIDE/SHOW THE SIMILAR QUESTIONS COLUMN */
-        /* Hide the 6th column (header and cells) by default */
-        .problem-table th:nth-child(6),
-        .problem-table td:nth-child(6) {
-            display: none;
-        }
+        /* Checkbox */
+        .checkbox-wrapper { width: 24px; height: 24px; border-radius: 6px; border: 2px solid #52525b; background: rgba(0,0,0,0.3); display: grid; place-items: center; cursor: pointer; transition: all 0.2s; overflow: hidden; }
+        .checkbox-wrapper:hover { border-color: #71717a; }
+        .problem-row.solved .checkbox-wrapper { background: #10b981; border-color: #10b981; box-shadow: 0 0 15px rgba(16, 185, 129, 0.4); }
+        .checkmark-path { stroke-dasharray: 20; stroke-dashoffset: 20; transition: stroke-dashoffset 0.3s cubic-bezier(0.65, 0, 0.45, 1); }
+        .problem-row.solved .checkmark-path { stroke-dashoffset: 0; }
+
+        @keyframes shimmer { 100% { transform: translateX(100%); } }
+        @keyframes fadeInUp { to { opacity: 1; transform: translateY(0); } }
         
-        /* When the table has the 'show-similar' class, reveal the 6th column */
-        .problem-table.show-similar th:nth-child(6),
-        .problem-table.show-similar td:nth-child(6) {
-            display: table-cell;
-        }
+        .badge { font-size: 10px; font-family: 'JetBrains Mono', monospace; padding: 4px 8px; border-radius: 4px; font-weight: 700; text-transform: uppercase; }
+        .badge-Easy { background: rgba(52, 211, 153, 0.1); color: #34d399; }
+        .badge-Medium { background: rgba(251, 191, 36, 0.1); color: #fbbf24; }
+        .badge-Hard { background: rgba(248, 113, 113, 0.1); color: #f87171; }
 
+        .filter-btn { opacity: 0.5; transition: 0.2s; }
+        .filter-btn:hover { opacity: 0.8; }
+        .filter-btn.active { opacity: 1; color: var(--primary); font-weight: 600; }
     </style>
 </head>
-<body class="text-gray-200">
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div class="flex flex-col sm:flex-row justify-between items-center mb-6">
-            <h1 class="text-4xl sm:text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-indigo-400 mb-4 sm:mb-0">
-                {{ topic_name }}
-            </h1>
-            <div class="flex items-center space-x-4 mt-4 sm:mt-0">
-                <button id="toggle-similar-btn" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500">
-                    Show Similar
-                </button>
-                <a href="{{ url_for('index') }}" class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-xl shadow-sm text-white bg-gray-700/50 hover:bg-gray-600/50 transition-colors">
-                    &larr; Back to Roadmap
-                </a>
+<body class="min-h-screen pb-20">
+
+    <!-- HEADER HUD -->
+    <div class="glass-hud">
+        <div class="max-w-5xl mx-auto px-6 py-6">
+            <div class="flex justify-between items-center mb-6">
+                <div>
+                    <a href="{{ url_for('index') }}" class="text-xs font-bold text-gray-500 hover:text-white uppercase tracking-widest mb-1 block transition-colors">
+                        &larr; Main Operations
+                    </a>
+                    <h1 class="text-3xl md:text-4xl font-extrabold tracking-tight text-white flex items-center gap-3">
+                        <span class="bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">{{ topic_name }}</span>
+                    </h1>
+                </div>
+                <div class="text-right">
+                    <div class="text-xs text-gray-400 font-mono mb-1">MODULE PROGRESS</div>
+                    <div class="text-3xl font-bold text-indigo-400 font-mono tracking-tighter" id="total-progress">0%</div>
+                </div>
             </div>
-        </div>
-        <div class="bg-gray-800/50 border border-gray-700 p-4 rounded-xl mb-8 text-sm text-gray-400">
-            <p><strong class="text-gray-200">Your Guided Path:</strong> Problems are grouped by key patterns. Master each pattern from Easy to Hard before moving to the next.</p>
-            <p class="mt-2">Showing a curated list of up to <strong class="text-white">{{ total_count }}</strong> core problems, sorted for a smooth learning curve.</p>
-        </div>
-        <div class="overflow-x-auto shadow-2xl rounded-2xl border border-gray-700">
-            <table class="min-w-full divide-y divide-gray-700 problem-table">
-                <thead class="bg-gray-800/70">
-                    <tr>
-                        <th scope="col" class="px-4 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Status</th>
-                        <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Title</th>
-                        <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Difficulty</th>
-                        <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Quality</th>
-                        <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Related Topics</th>
-                        <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Similar Questions</th>
-                    </tr>
-                </thead>
-                <tbody id="problem-table-body" class="bg-gray-900/70 divide-y divide-gray-800">
-                    <!-- JavaScript will render problems here dynamically -->
-                </tbody>
-            </table>
-        </div>
-        <div id="completion-message" class="text-center py-8 text-lg text-green-400 font-semibold" style="display: none;">
-            🎉 Congratulations! You've completed all the core problems for this topic! 🎉
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                    <div class="flex justify-between text-xs font-semibold mb-2 text-green-400"><span>EASY</span><span id="easy-text">0/0</span></div>
+                    <div class="liquid-bar-bg"><div id="easy-bar" class="liquid-bar-fill bg-green-500" style="width: 0%"></div></div>
+                </div>
+                <div>
+                    <div class="flex justify-between text-xs font-semibold mb-2 text-yellow-400"><span>MEDIUM</span><span id="medium-text">0/0</span></div>
+                    <div class="liquid-bar-bg"><div id="medium-bar" class="liquid-bar-fill bg-yellow-500" style="width: 0%"></div></div>
+                </div>
+                <div>
+                    <div class="flex justify-between text-xs font-semibold mb-2 text-red-400"><span>HARD</span><span id="hard-text">0/0</span></div>
+                    <div class="liquid-bar-bg"><div id="hard-bar" class="liquid-bar-fill bg-red-500" style="width: 0%"></div></div>
+                </div>
+            </div>
         </div>
     </div>
 
+    <!-- CONTROLS -->
+    <div class="max-w-5xl mx-auto px-6 mt-8 mb-6 flex justify-between items-end border-b border-gray-800 pb-4">
+        <div class="flex gap-6 text-sm">
+            <button class="filter-btn active" onclick="filterList('all', this)">ALL MISSIONS</button>
+            <button class="filter-btn" onclick="filterList('active', this)">ACTIVE</button>
+            <button class="filter-btn" onclick="filterList('completed', this)">COMPLETED</button>
+        </div>
+        <div class="text-xs text-gray-600 font-mono">SYNC: <span class="text-green-500">ONLINE</span></div>
+    </div>
+
+    <!-- LIST -->
+    <div id="problem-container" class="max-w-5xl mx-auto px-6 space-y-3"></div>
+
     <script>
         const allProblems = {{ problems | tojson | safe }};
-    </script>
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const problemPool = allProblems;
-            const tableBody = document.getElementById('problem-table-body');
-            const completionMessageEl = document.getElementById('completion-message');
+        let solvedIds = new Set();
+        // 1. Get the Token from the meta tag
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
-            // --- LOGIC FOR THE TOGGLE BUTTON ---
-            const toggleBtn = document.getElementById('toggle-similar-btn');
-            const problemTable = document.querySelector('.problem-table');
-            const SIMILAR_VISIBLE_KEY = 'similarQuestionsVisible';
-
-            const updateButtonText = (isVisible) => {
-                toggleBtn.textContent = isVisible ? 'Hide Similar' : 'Show Similar';
-            };
-            
-            toggleBtn.addEventListener('click', () => {
-                const isVisible = problemTable.classList.toggle('show-similar');
-                updateButtonText(isVisible);
-                localStorage.setItem(SIMILAR_VISIBLE_KEY, isVisible);
+        document.addEventListener("mousemove", (e) => {
+            const cards = document.querySelectorAll(".problem-row");
+            cards.forEach(card => {
+                const rect = card.getBoundingClientRect();
+                card.style.setProperty("--mouse-x", `${e.clientX - rect.left}px`);
+                card.style.setProperty("--mouse-y", `${e.clientY - rect.top}px`);
             });
-
-            const savedPreference = localStorage.getItem(SIMILAR_VISIBLE_KEY) === 'true';
-            if (savedPreference) {
-                problemTable.classList.add('show-similar');
-            }
-            updateButtonText(savedPreference);
-            // --- END OF TOGGLE LOGIC ---
-
-            let solvedProblemIds = new Set();
-
-            const getDifficultyBadge = (difficulty) => {
-                if (difficulty === 'Easy') return `<span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-900/80 text-green-300">Easy</span>`;
-                if (difficulty === 'Medium') return `<span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-900/80 text-yellow-300">Medium</span>`;
-                return `<span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-900/80 text-red-300">Hard</span>`;
-            };
-
-            const renderTable = () => {
-                const existingRowCount = tableBody.rows.length;
-                tableBody.innerHTML = '';
-                
-                const firstUnsolvedIndex = problemPool.findIndex(p => !solvedProblemIds.has(String(p.ID)));
-
-                const problemsToDisplay = (firstUnsolvedIndex === -1) 
-                    ? problemPool
-                    : problemPool.slice(0, firstUnsolvedIndex + 1);
-
-                problemsToDisplay.forEach((problem, index) => {
-                    const row = document.createElement('tr');
-                    row.className = 'problem-row';
-                    
-                    const topicsHtml = problem.Topics.map(topic => 
-                        `<span class="px-2 py-1 text-xs rounded-md bg-gray-700 text-gray-300">${topic}</span>`
-                    ).join('');
-
-                    const similarHtml = (problem.SimilarQuestions && problem.SimilarQuestions.length > 0)
-                        ? problem.SimilarQuestions.map(q => 
-                            `<a href="${q.Link}" target="_blank" class="similar-tag inline-block px-2 py-1 text-xs rounded-md">${q.title}</a>`
-                          ).join('')
-                        : `<span class="text-xs text-gray-500">None</span>`;
-
-                    row.innerHTML = `
-                        <td class="px-4 py-4 whitespace-nowrap text-center">
-                            <input type="checkbox" class="h-5 w-5 rounded custom-checkbox" data-problem-id="${problem.ID}">
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <a href="${problem.Link}" target="_blank" class="problem-title text-base font-semibold text-indigo-400 hover:text-indigo-300">${problem.Title}</a>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap">${getDifficultyBadge(problem.Difficulty)}</td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                             <div class="flex items-center">
-                                <svg class="w-4 h-4 text-green-400 mr-1.5" fill="currentColor" viewBox="0 0 20 20"><path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.562 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.821 2.333L6 10.333z"/></svg>
-                                <span class="text-sm font-medium text-gray-300">${problem.adjusted_like_ratio.toFixed(1)}%</span>
-                            </div>
-                        </td>
-                        <td class="px-6 py-4 max-w-sm whitespace-normal"><div class="flex flex-wrap gap-2">${topicsHtml}</div></td>
-                        <td class="px-6 py-4 max-w-sm whitespace-normal"><div class="flex flex-wrap gap-2">${similarHtml}</div></td>
-                    `;
-                    const checkbox = row.querySelector('input[type="checkbox"]');
-                    if (solvedProblemIds.has(String(problem.ID))) {
-                        checkbox.checked = true;
-                        row.classList.add('problem-solved');
-                    }
-                    tableBody.appendChild(row);
-                    
-                    if (problemsToDisplay.length > existingRowCount && index === problemsToDisplay.length - 1) {
-                         row.classList.add('new-row');
-                    }
-                });
-                
-                if (firstUnsolvedIndex === -1 && problemPool.length > 0) {
-                    completionMessageEl.style.display = 'block';
-                } else {
-                    completionMessageEl.style.display = 'none';
-                }
-            };
-            
-            async function toggleProblemOnServer(problemId, isSolved) {
-                 try {
-                    const response = await fetch('/api/progress/toggle', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ problem_id: problemId, solved: isSolved })
-                    });
-                    if (!response.ok) throw new Error('Server update failed');
-                    return true;
-                } catch (error) {
-                    console.error('Error toggling progress:', error);
-                    alert('Failed to save progress. Please check your connection and try again.');
-                    return false;
-                }
-            }
-            
-            tableBody.addEventListener('change', async (event) => {
-                if (event.target.matches('input[type="checkbox"]')) {
-                    const checkbox = event.target;
-                    const problemId = checkbox.dataset.problemId;
-                    const isSolved = checkbox.checked;
-                    
-                    const success = await toggleProblemOnServer(problemId, isSolved);
-
-                    if (success) {
-                        checkbox.closest('.problem-row').classList.toggle('problem-solved', isSolved);
-                        const problemIdStr = String(problemId);
-                        if (isSolved) {
-                            solvedProblemIds.add(problemIdStr);
-                            renderTable();
-                        } else {
-                            solvedProblemIds.delete(problemIdStr);
-                        }
-                    } else {
-                        checkbox.checked = !isSolved;
-                    }
-                }
-            });
-
-            async function initializePage() {
-                try {
-                    const response = await fetch('/api/progress');
-                    if (!response.ok) throw new Error('Failed to fetch progress');
-                    const solvedData = await response.json();
-                    solvedProblemIds = new Set(Object.keys(solvedData));
-                    renderTable();
-                } catch (error) {
-                    console.error("Initialization error:", error);
-                    renderTable();
-                }
-            }
-
-            initializePage();
         });
+
+        async function init() {
+            try {
+                const res = await fetch('/api/progress');
+                if (res.ok) {
+                    const data = await res.json();
+                    solvedIds = new Set(Object.keys(data));
+                }
+            } catch(e) {}
+            render();
+            updateStats();
+        }
+
+        function render(filterType = 'all') {
+            const container = document.getElementById('problem-container');
+            container.innerHTML = '';
+
+            allProblems.forEach((p, index) => {
+                const isSolved = solvedIds.has(String(p.ID));
+                if (filterType === 'active' && isSolved) return;
+                if (filterType === 'completed' && !isSolved) return;
+
+                const row = document.createElement('div');
+                row.className = `problem-row flex items-center justify-between group ${isSolved ? 'solved' : ''}`;
+                row.style.animation = `fadeInUp 0.4s ease forwards ${index * 0.05}s`;
+                row.style.opacity = '0'; row.style.transform = 'translateY(10px)';
+
+                row.innerHTML = `
+                    <div class="flex items-center gap-5 z-10 w-full">
+                        <div class="checkbox-wrapper" onclick="handleCheck(${p.ID}, this, event)">
+                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                                <path class="checkmark-path" d="M11.6666 3.5L5.24992 9.91667L2.33325 7" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex items-baseline justify-between">
+                                <a href="${p.Link}" target="_blank" class="problem-title text-lg font-medium text-gray-100 group-hover:text-indigo-300 transition-colors">
+                                    ${p.Title}
+                                    <span class="strikethrough-line"></span>
+                                </a>
+                                <span class="text-xs font-mono text-gray-600">#${p.ID}</span>
+                            </div>
+                            <div class="flex items-center gap-3 mt-2">
+                                <span class="badge badge-${p.Difficulty}">${p.Difficulty}</span>
+                                <span class="text-xs text-gray-500 font-medium">Acc: ${p.AcceptanceRate}%</span>
+                                <span class="text-xs text-gray-600">•</span>
+                                <span class="text-xs text-gray-500 font-medium">${p.adjusted_like_ratio.toFixed(0)}% Likes</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(row);
+            });
+        }
+
+        async function handleCheck(id, btn, event) {
+            const sid = String(id);
+            const isSolving = !solvedIds.has(sid);
+            const row = btn.closest('.problem-row');
+
+            if (isSolving) {
+                solvedIds.add(sid);
+                row.classList.add('solved');
+                triggerConfetti(event.clientX, event.clientY);
+            } else {
+                solvedIds.delete(sid);
+                row.classList.remove('solved');
+            }
+            updateStats();
+
+            try {
+                await fetch('/api/progress/toggle', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken // <--- CRITICAL FIX
+                    },
+                    body: JSON.stringify({problem_id: id, solved: isSolving})
+                });
+            } catch(e) { console.error("Sync failed"); }
+        }
+
+        function triggerConfetti(x, y) {
+            const xNorm = x / window.innerWidth;
+            const yNorm = y / window.innerHeight;
+            confetti({ particleCount: 60, spread: 70, origin: { x: xNorm, y: yNorm }, colors: ['#6366f1', '#10b981', '#ffffff'], disableForReducedMotion: true, gravity: 1.2, scalar: 0.8, ticks: 100 });
+        }
+
+        function updateStats() {
+            const counts = { Easy: {total:0, done:0}, Medium: {total:0, done:0}, Hard: {total:0, done:0} };
+            let totalDone = 0;
+            allProblems.forEach(p => {
+                counts[p.Difficulty].total++;
+                if (solvedIds.has(String(p.ID))) {
+                    counts[p.Difficulty].done++;
+                    totalDone++;
+                }
+            });
+            document.getElementById('total-progress').innerText = `${Math.round((totalDone / allProblems.length) * 100) || 0}%`;
+            updateBar('easy', counts.Easy); updateBar('medium', counts.Medium); updateBar('hard', counts.Hard);
+        }
+
+        function updateBar(type, data) {
+            const pct = data.total === 0 ? 0 : Math.round((data.done / data.total) * 100);
+            document.getElementById(`${type}-bar`).style.width = `${pct}%`;
+            document.getElementById(`${type}-text`).innerText = `${data.done}/${data.total}`;
+        }
+
+        function filterList(type, btn) {
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            render(type);
+        }
+
+        init();
     </script>
 </body>
 </html>

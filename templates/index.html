@@ -3,91 +3,152 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interactive DSA Roadmap</title>
+    <title>DSA Operations Map</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     
     <style>
         :root {
-            --bg-color: #1e1b34;
-            --accent-purple: #a78bfa;
-            --accent-teal: #2dd4bf;
-            --text-color: #e5e7eb;
-            --locked-color: #374151;
-            --glass-border: rgba(167, 139, 250, 0.3);
+            --bg: #030303;
+            --grid: rgba(255,255,255,0.03);
+            --primary: #6366f1;
+            --glass: rgba(15, 15, 15, 0.8);
         }
-        body { font-family: 'Inter', sans-serif; background-color: var(--bg-color); color: var(--text-color); overflow: hidden; }
-        #particles-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
-        #graph-container { width: 100vw; height: 100vh; position: relative; z-index: 1; cursor: grab; }
-        #graph-container:active { cursor: grabbing; }
-        .ui-overlay { position: absolute; bottom: 2rem; left: 50%; transform: translateX(-50%); z-index: 10; }
+        
+        body { 
+            background-color: var(--bg); 
+            color: white; 
+            font-family: 'Inter', sans-serif; 
+            overflow: hidden; 
+            margin: 0; 
+        }
+
+        /* --- 1. ENVIRONMENT --- */
+        /* Infinite Grid Background */
+        .bg-grid {
+            position: fixed; inset: 0; pointer-events: none; z-index: 0;
+            background-size: 50px 50px;
+            background-image: 
+                linear-gradient(to right, var(--grid) 1px, transparent 1px),
+                linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+        }
+
+        /* Mouse Spotlight */
+        #spotlight {
+            position: fixed; pointer-events: none; z-index: 1;
+            width: 800px; height: 800px;
+            background: radial-gradient(circle, rgba(99, 102, 241, 0.06) 0%, transparent 70%);
+            transform: translate(-50%, -50%); opacity: 0; transition: opacity 0.5s ease;
+        }
+
+        #graph-container { width: 100vw; height: 100vh; position: relative; z-index: 2; }
+        
+        /* --- 2. UI ELEMENTS --- */
         .glass-panel {
-            background-color: rgba(23, 21, 43, 0.6); backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px); border: 1px solid var(--glass-border);
-            border-radius: 1.25rem; 
-            padding: 1rem 2rem;
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-            display: flex; align-items: center; gap: 1.5rem;
+            background: var(--glass);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            transition: all 0.2s ease;
         }
-        .instructions { font-size: 1rem; color: #d1d5db; font-weight: 500; pointer-events: none; }
-        #reset-button {
-            background-color: transparent; 
-            color: var(--accent-purple);
-            padding: 0.75rem 1.5rem;
-            border: 1px solid var(--accent-purple); border-radius: 1rem; font-weight: 600;
-            cursor: pointer; transition: all 0.2s ease-in-out;
+        .glass-panel:hover { border-color: rgba(255,255,255,0.2); }
+
+        /* Floating Nav Island */
+        .nav-island {
+            position: absolute; top: 24px; left: 50%; transform: translateX(-50%);
+            z-index: 50; padding: 8px 16px;
+            display: flex; align-items: center; gap: 16px;
         }
-        #reset-button:hover { 
-            background-color: var(--accent-purple);
-            color: white;
-            box-shadow: 0 0 15px rgba(167, 139, 250, 0.5);
+
+        /* Legend / Status */
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+        .dot-locked { background: #333; }
+        .dot-active { background: #6366f1; box-shadow: 0 0 8px #6366f1; }
+        .dot-mastered { background: #10b981; box-shadow: 0 0 8px #10b981; }
+
+        /* Tooltip */
+        .modern-tooltip {
+            position: absolute; pointer-events: none; opacity: 0;
+            background: rgba(10, 10, 15, 0.95);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 8px; padding: 12px 16px;
+            box-shadow: 0 20px 40px -10px rgba(0,0,0,0.8);
+            z-index: 100;
+            transition: opacity 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
+            transform: translateY(10px);
         }
-        .graph-tooltip {
-            position: absolute; text-align: left; width: auto; height: auto;
-            padding: 8px 12px; font-size: 14px; font-weight: 500;
-            background: #111827; border: 1px solid #4b5563; border-radius: 8px;
-            pointer-events: none; opacity: 0; transition: opacity 0.2s;
-            color: white; white-space: pre;
+        .modern-tooltip.visible { opacity: 1; transform: translateY(0); }
+
+        /* Reset Button */
+        .control-dock {
+            position: absolute; bottom: 32px; right: 32px; z-index: 50;
         }
-        .completed > .node-background {
-            stroke: url(#progress-gradient) !important;
-            stroke-width: 3px !important;
+        .icon-btn {
+            width: 40px; height: 40px; display: grid; place-items: center;
+            color: #9ca3af; cursor: pointer;
         }
+        .icon-btn:hover { color: white; background: rgba(255,255,255,0.05); }
+
     </style>
 </head>
-<body class="flex flex-col items-center justify-center">
-    <!-- NEW: User Authentication Navigation -->
-    <div class="absolute top-0 right-0 p-6 z-20">
+<body>
+    <div id="spotlight"></div>
+    <div class="bg-grid"></div>
+
+    <!-- HEADER HUD -->
+    <div class="glass-panel nav-island">
+        <div class="flex items-center gap-3 pr-4 border-r border-white/10">
+            <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+            <span class="text-xs font-bold tracking-widest uppercase text-gray-300">System Online</span>
+        </div>
+        
         {% if current_user.is_authenticated %}
-            <div class="flex items-center space-x-4">
-                <span class="text-gray-300 font-medium">Welcome, {{ current_user.username }}!</span>
-                <a href="{{ url_for('logout') }}" class="px-4 py-2 text-sm font-semibold text-white bg-red-600/80 hover:bg-red-700/80 rounded-lg transition-colors">Logout</a>
+            <div class="flex items-center gap-3 text-xs">
+                <span class="text-gray-400">Operator: <span class="text-white font-semibold">{{ current_user.username }}</span></span>
+                <a href="{{ url_for('logout') }}" class="text-red-400 hover:text-red-300 font-medium">Disconnect</a>
             </div>
         {% else %}
-            <a href="{{ url_for('login') }}" class="px-4 py-2 text-sm font-semibold text-white bg-indigo-600/80 hover:bg-indigo-700/80 rounded-lg transition-colors">Login</a>
+            <a href="{{ url_for('login') }}" class="text-xs font-bold text-indigo-400 hover:text-white transition-colors">INITIALIZE LOGIN</a>
         {% endif %}
     </div>
 
-    <div id="particles-bg"></div>
-    <div id="graph-container"></div>
-    <div class="graph-tooltip"></div>
-    <div class="ui-overlay">
-        <div class="glass-panel">
-            <button id="reset-button">Reset View</button>
-            <div class="instructions">
-                Scroll to Zoom • Click & Drag to Pan
-                <span class="ml-4 pl-4 border-l border-gray-600">
-                    Node progress bar shows completed problems
-                </span>
-            </div>
+    <!-- LEGEND (Bottom Left) -->
+    <div class="absolute bottom-8 left-8 z-50 pointer-events-none">
+        <div class="glass-panel p-4 space-y-2 pointer-events-auto">
+            <div class="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2">Signal Key</div>
+            <div class="flex items-center text-xs text-gray-400"><span class="status-dot dot-locked"></span> Locked</div>
+            <div class="flex items-center text-xs text-white"><span class="status-dot dot-active"></span> In Progress</div>
+            <div class="flex items-center text-xs text-emerald-400"><span class="status-dot dot-mastered"></span> Mastered</div>
         </div>
     </div>
+
+    <!-- MAIN GRAPH -->
+    <div id="graph-container"></div>
+    
+    <!-- TOOLTIP -->
+    <div class="modern-tooltip"></div>
+
+    <!-- CONTROLS (Bottom Right) -->
+    <div class="glass-panel control-dock flex overflow-hidden">
+        <button id="reset-button" class="icon-btn" title="Reset Camera">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+        </button>
+    </div>
+
+    <script>
+        // Spotlight Logic
+        const spot = document.getElementById('spotlight');
+        window.addEventListener('mousemove', e => {
+            spot.style.opacity = '1';
+            spot.style.left = e.clientX + 'px';
+            spot.style.top = e.clientY + 'px';
+        });
+        window.addEventListener('mouseout', () => spot.style.opacity = '0');
+    </script>
+
     <script> const topicProblemsMap = {{ topic_problems_map | safe }}; </script>
-    <script> const problem_details = {{ problem_details | safe }}; </script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tsparticles@2/tsparticles.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='js/graph.js') }}"></script>
 </body>
 </html>
