@@ -74,19 +74,21 @@
         }
 
         /* Floating Nav Island */
+        /* Floating Nav Island */
         .nav-island {
             position: absolute;
             top: 24px;
             left: 50%;
             transform: translateX(-50%);
+            /* High Z-Index ensures it sits ON TOP of the graph */
             z-index: 9999;
-            /* CHANGED: Increased from 50 to 9999 */
             padding: 8px 16px;
             display: flex;
             align-items: center;
             gap: 16px;
+            /* Ensures mouse clicks pass to the buttons, not the graph */
             pointer-events: auto;
-            /* ADDED: Ensures clicks work */
+            cursor: default;
         }
 
         /* Legend / Status */
