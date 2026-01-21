@@ -8,7 +8,7 @@ from flask_session import Session
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
-from datetime import timedelta
+from datetime import timedelta, datetime, date
 import json
 import math
 import os
@@ -18,8 +18,7 @@ import re
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev_key_change_in_prod_987654321')
 
-# --- 1. DATABASE CONFIG (Fixed Order for Render) ---
-# We must define where the DB is BEFORE initializing SQLAlchemy
+# --- 1. DATABASE CONFIG ---
 database_url = os.environ.get('DATABASE_URL')
 
 if database_url:
@@ -28,7 +27,7 @@ if database_url:
         database_url = database_url.replace("postgres://", "postgresql://", 1)
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 else:
-    # Fallback to SQLite for local development
+    # Fallback to SQLite
     RENDER_INSTANCE_DIR = os.environ.get('RENDER_INSTANCE_DIR', os.path.join(os.path.abspath(os.path.dirname(__file__)), 'instance'))
     if not os.path.exists(RENDER_INSTANCE_DIR):
         os.makedirs(RENDER_INSTANCE_DIR)
@@ -36,36 +35,23 @@ else:
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# --- 2. SESSION SECURITY (Database Backed) ---
-# Use the database for sessions so users don't get logged out on restart
+# --- 2. SESSION SECURITY ---
 app.config['SESSION_TYPE'] = 'sqlalchemy'
 app.config['SESSION_PERMANENT'] = True
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 app.config['SESSION_USE_SIGNER'] = True
 app.config['SESSION_KEY_PREFIX'] = 'dsa_auth:'
-# Security headers
-app.config['SESSION_COOKIE_SECURE'] = True # Set to True for HTTPS (Render)
+app.config['SESSION_COOKIE_SECURE'] = True
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
 # --- INITIALIZE EXTENSIONS ---
 db = SQLAlchemy(app)
-
-# Link session to the initialized DB
 app.config['SESSION_SQLALCHEMY'] = db 
-
 bcrypt = Bcrypt(app)
 migrate = Migrate(app, db)
 server_session = Session(app)
 csrf = CSRFProtect(app)
-
-# --- ENSURE TABLES EXIST ON RENDER ---
-with app.app_context():
-    try:
-        db.create_all()
-        print("✅ Database tables created successfully.")
-    except Exception as e:
-        print(f"❌ Error creating tables: {e}")
 
 # Rate Limiter
 limiter = Limiter(
@@ -82,7 +68,7 @@ login_manager.login_message_category = "error"
 
 DATA = pd.DataFrame()
 
-# --- MODELS ---
+# --- MODELS (MUST BE DEFINED BEFORE db.create_all) ---
 class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(30), unique=True, nullable=False, index=True)
@@ -100,8 +86,15 @@ class SolvedProblem(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# --- DATA LOGIC (Strict Hierarchy) ---
+# --- ENSURE TABLES EXIST (NOW IN CORRECT SPOT) ---
+with app.app_context():
+    try:
+        db.create_all()
+        print("✅ Database tables created successfully.")
+    except Exception as e:
+        print(f"❌ Error creating tables: {e}")
 
+# --- DATA LOGIC ---
 TOPIC_PRIORITY = [
     ("math-geometry", ["Geometry", "Math", "Number Theory"]),
     ("bit-manipulation", ["Bit Manipulation"]),
@@ -155,17 +148,14 @@ def load_data():
     global DATA
     try:
         if not os.path.exists('leetcode_with_submissions.csv'):
-            print("❌ CSV File not found. Ensure it is committed to the repo.")
+            print("❌ CSV File not found.")
             return
-
         df = pd.read_csv('leetcode_with_submissions.csv')
         df.rename(columns={'Acceptance Rate (%)':'AcceptanceRate','Premium Only':'PremiumOnly','Total Submissions':'TotalSubmissions'}, inplace=True)
         df = df[(df['Category'] == 'Algorithms') & (df['PremiumOnly'] == False)].copy()
         
-        # Parse Data
         df['Topics'] = df['Topics'].fillna('').apply(lambda x: [t.strip() for t in x.split(',') if t.strip()])
         
-        # Parse Submissions (Handle '1.2M', '500K')
         def parse_subs(x):
             s = str(x).upper().strip()
             if 'M' in s: return int(float(s.replace('M','')) * 1000000)
@@ -174,45 +164,32 @@ def load_data():
             except: return 0
             
         df['TotalSubmissions'] = df['TotalSubmissions'].fillna(0).apply(parse_subs)
-        
-        # Scoring
         df['adjusted_like_ratio'] = df.apply(lambda r: (r['Likes']/(r['Likes']+r['Dislikes']))*min((r['Likes']+r['Dislikes'])/1000,1)*100 if (r['Likes']+r['Dislikes'])>0 else 0, axis=1)
         df['signal_score'] = df.apply(calculate_signal_score, axis=1)
 
-        # STRICT ASSIGNMENT
         df['AssignedTopic'] = df['Topics'].apply(assign_primary_topic)
         df = df[df['AssignedTopic'].notna()]
-        
         DATA = df
-        print(f"✅ Data Loaded & Categorized: {len(DATA)} problems.")
+        print(f"✅ Data Loaded: {len(DATA)} problems.")
     except Exception as e:
         print(f"❌ Data Load Error: {e}")
         DATA = pd.DataFrame()
 
 def get_curated_problems_for_topic(topic_slug):
     if DATA.empty: return []
-    
     df_topic = DATA[DATA['AssignedTopic'] == topic_slug].copy()
     if df_topic.empty: return []
-    
-    # Sort by Quality
     df_topic = df_topic.sort_values(by='signal_score', ascending=False)
-    
-    # Limit
     limit = 60 
-    
-    # Stratified Difficulty
     e_lim, m_lim, h_lim = int(limit*0.3), int(limit*0.5), int(limit*0.2)
     final_df = pd.concat([
         df_topic[df_topic['Difficulty'] == 'Easy'].head(e_lim),
         df_topic[df_topic['Difficulty'] == 'Medium'].head(m_lim),
         df_topic[df_topic['Difficulty'] == 'Hard'].head(h_lim)
     ])
-    
     diff_order = pd.CategoricalDtype(['Easy', 'Medium', 'Hard'], ordered=True)
     final_df['Difficulty'] = final_df['Difficulty'].astype(diff_order)
     final_df = final_df.sort_values(by=['Difficulty', 'signal_score'], ascending=[True, False])
-    
     return final_df.to_dict('records')
 
 load_data()
@@ -223,47 +200,32 @@ load_data()
 @limiter.limit("5 per minute")
 def login():
     if current_user.is_authenticated: return redirect(url_for('index'))
-    
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
-        
         user = User.query.filter_by(username=username).first()
-        
         if user and bcrypt.check_password_hash(user.password, password):
-            # CLEAR OLD SESSIONS BEFORE LOGGING IN
             session.clear() 
-            
-            # LOGIN WITHOUT "REMEMBER ME" (This prevents the loop)
-            login_user(user, remember=False) 
-            
+            # remember=False prevents the redirect loop
+            login_user(user, remember=False)
             return redirect(request.args.get('next') or url_for('index'))
         else:
             flash('Invalid credentials.', 'error')
-            
     return render_template('login.html')
 
 @app.route('/signup', methods=['GET', 'POST'])
 @limiter.limit("3 per hour")
 def signup():
     if current_user.is_authenticated: return redirect(url_for('index'))
-    
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
-        
         if not re.match(r'^[a-zA-Z0-9_]+$', username):
-            flash('Username must be alphanumeric.', 'error')
-            return render_template('signup.html')
-            
+            flash('Username must be alphanumeric.', 'error'); return render_template('signup.html')
         if len(username) < 3 or len(username) > 20:
-            flash('Username length must be 3-20.', 'error')
-            return render_template('signup.html')
-
+            flash('Username length must be 3-20.', 'error'); return render_template('signup.html')
         if len(password) < 8:
-            flash('Password must be 8+ characters.', 'error')
-            return render_template('signup.html')
-
+            flash('Password must be 8+ characters.', 'error'); return render_template('signup.html')
         if User.query.filter_by(username=username).first():
             flash('Username taken.', 'error')
         else:
@@ -271,49 +233,78 @@ def signup():
             user = User(username=username, password=hashed_pw)
             db.session.add(user)
             db.session.commit()
-            
             session.clear()
-            login_user(user, remember=True)
+            login_user(user, remember=False)
             flash('Account created.', 'success')
             return redirect(url_for('index'))
-            
     return render_template('signup.html')
 
 @app.route('/logout')
 def logout():
-    # 1. Server-Side Logout
     logout_user()
     session.clear()
-    
-    # 2. Client-Side Cookie Destruction
-    # We return a specific response to force the browser to drop the cookies
     response = redirect(url_for('login'))
-    
-    # Delete the Session Cookie
+    # Aggressively clear cookies to prevent loop
     response.set_cookie('session', '', expires=0, path='/')
-    # Delete the Remember Me Cookie (Just in case it exists)
     response.set_cookie('remember_token', '', expires=0, path='/')
-    
-    # Disable Caching so clicking "Back" doesn't show the logged-in page
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-    response.headers['Pragma'] = 'no-cache'
-    response.headers['Expires'] = '0'
-    
     return response
-
-@app.errorhandler(429)
-def ratelimit_handler(e):
-    flash("Too many requests. Please wait.", "error")
-    return redirect(url_for('login'))
 
 # --- MAIN ROUTES ---
 
 @app.route('/')
 @login_required
 def index():
-    if DATA.empty: return "Data Error: Run helper.py first or ensure CSV is in repo.", 500
+    if DATA.empty: return "Data Error: Run helper.py", 500
+    
+    # 1. Fetch User Progress for Heatmap
+    solved = SolvedProblem.query.filter_by(user_id=current_user.id).order_by(SolvedProblem.solved_at.asc()).all()
+    
+    # 2. Process Dates for Heatmap
+    activity_map = {}
+    distinct_dates = set()
+    
+    for s in solved:
+        d_str = s.solved_at.strftime('%Y-%m-%d')
+        activity_map[d_str] = activity_map.get(d_str, 0) + 1
+        distinct_dates.add(s.solved_at.date())
+        
+    # 3. Calculate Streaks
+    sorted_dates = sorted(list(distinct_dates))
+    current_streak = 0
+    longest_streak = 0
+    
+    if sorted_dates:
+        today = datetime.now().date()
+        yesterday = today - timedelta(days=1)
+        
+        # Check current streak
+        if sorted_dates[-1] == today or sorted_dates[-1] == yesterday:
+            current_streak = 1
+            for i in range(len(sorted_dates)-1, 0, -1):
+                if (sorted_dates[i] - sorted_dates[i-1]).days == 1:
+                    current_streak += 1
+                else:
+                    break
+        
+        # Check Max streak
+        temp_streak = 1
+        for i in range(1, len(sorted_dates)):
+            if (sorted_dates[i] - sorted_dates[i-1]).days == 1:
+                temp_streak += 1
+            else:
+                longest_streak = max(longest_streak, temp_streak)
+                temp_streak = 1
+        longest_streak = max(longest_streak, temp_streak)
+
     topic_problems_map = {slug: [p['ID'] for p in get_curated_problems_for_topic(slug)] for slug in SLUG_TO_NAME_MAP.keys()}
-    return render_template('index.html', topic_problems_map=json.dumps(topic_problems_map))
+    
+    return render_template('index.html', 
+                         topic_problems_map=json.dumps(topic_problems_map),
+                         activity_map=json.dumps(activity_map),
+                         current_streak=current_streak,
+                         longest_streak=longest_streak,
+                         total_solved=len(solved))
 
 @app.route('/topic/<topic_slug>')
 @login_required
@@ -343,6 +334,4 @@ def toggle_progress():
     return jsonify({'status': 'success'})
 
 if __name__ == '__main__':
-    # This block usually doesn't run on Render (Gunicorn runs the app object directly)
-    # That is why we added the db.create_all() block above.
     app.run(debug=True)

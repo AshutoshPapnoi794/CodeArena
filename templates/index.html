@@ -1,218 +1,287 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DSA Operations Map</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap"
-        rel="stylesheet">
-
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    
     <style>
         :root {
             --bg: #030303;
-            --grid: rgba(255, 255, 255, 0.03);
+            --grid: rgba(255,255,255,0.03);
             --primary: #6366f1;
             --glass: rgba(15, 15, 15, 0.8);
+            --amber-glow: rgba(245, 158, 11, 0.6);
+        }
+        
+        body { 
+            background-color: var(--bg); 
+            color: white; 
+            font-family: 'Inter', sans-serif; 
+            overflow: hidden; 
+            margin: 0; 
         }
 
-        body {
-            background-color: var(--bg);
-            color: white;
-            font-family: 'Inter', sans-serif;
-            overflow: hidden;
-            margin: 0;
-        }
-
-        /* --- 1. ENVIRONMENT --- */
-        /* Infinite Grid Background */
+        /* --- BACKGROUND --- */
         .bg-grid {
-            position: fixed;
-            inset: 0;
-            pointer-events: none;
-            z-index: 0;
+            position: fixed; inset: 0; pointer-events: none; z-index: 0;
             background-size: 50px 50px;
-            background-image:
+            background-image: 
                 linear-gradient(to right, var(--grid) 1px, transparent 1px),
                 linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
         }
 
-        /* Mouse Spotlight */
         #spotlight {
-            position: fixed;
-            pointer-events: none;
-            z-index: 1;
-            width: 800px;
-            height: 800px;
+            position: fixed; pointer-events: none; z-index: 1;
+            width: 800px; height: 800px;
             background: radial-gradient(circle, rgba(99, 102, 241, 0.06) 0%, transparent 70%);
-            transform: translate(-50%, -50%);
-            opacity: 0;
-            transition: opacity 0.5s ease;
+            transform: translate(-50%, -50%); opacity: 0; transition: opacity 0.5s ease;
         }
 
-        #graph-container {
-            width: 100vw;
-            height: 100vh;
-            position: relative;
-            z-index: 2;
-        }
-
-        /* --- 2. UI ELEMENTS --- */
+        #graph-container { width: 100vw; height: 100vh; position: relative; z-index: 2; }
+        
+        /* --- UI UTILS --- */
         .glass-panel {
             background: var(--glass);
             backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255,255,255,0.1);
             border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
             transition: all 0.2s ease;
         }
 
-        .glass-panel:hover {
-            border-color: rgba(255, 255, 255, 0.2);
+        /* --- VERTICAL HUD PANEL --- */
+        .hud-panel {
+            position: absolute;
+            top: 32px;
+            left: 32px;
+            z-index: 20;
+            
+            width: 240px; /* Vertical Card Width */
+            
+            background: rgba(5, 5, 10, 0.85);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            box-shadow: 0 0 40px rgba(0, 0, 0, 0.6), inset 0 0 20px rgba(99, 102, 241, 0.05);
+            backdrop-filter: blur(12px);
+            border-radius: 20px;
+            padding: 24px 20px;
+            
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            
+            pointer-events: auto;
+            animation: hudSlideIn 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+            overflow: hidden;
         }
 
-        /* Floating Nav Island */
-        /* Floating Nav Island */
+        /* FLAME STREAK */
+        .streak-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            padding-bottom: 10px;
+        }
+
+        .flame-icon {
+            width: 56px;
+            height: 56px;
+            color: #f59e0b; /* Amber 500 */
+            filter: drop-shadow(0 0 15px var(--amber-glow));
+            animation: flameFlicker 3s infinite alternate ease-in-out;
+        }
+
+        .streak-value {
+            font-size: 42px;
+            font-weight: 800;
+            color: white;
+            line-height: 1;
+            margin-top: 4px;
+            text-shadow: 0 0 25px rgba(255,255,255,0.15);
+            font-family: 'Inter', sans-serif;
+        }
+
+        .streak-label {
+            font-size: 10px;
+            color: #9ca3af;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+            margin-top: 6px;
+        }
+
+        /* MINI STATS GRID */
+        .mini-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            width: 100%;
+            border-top: 1px solid rgba(255,255,255,0.08);
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            padding: 16px 0;
+        }
+
+        .mini-stat-item { text-align: center; }
+        .mini-label { font-size: 9px; color: #6b7280; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; font-weight: 600; }
+        .mini-val { font-size: 16px; font-weight: 700; color: #e5e7eb; }
+        .highlight-text { color: #818cf8; text-shadow: 0 0 10px rgba(129, 140, 248, 0.4); }
+
+        /* COMPACT HEATMAP */
+        .heat-container { width: 100%; display: flex; flex-direction: column; align-items: center; }
+        
+        .heat-grid {
+            display: grid;
+            grid-template-rows: repeat(7, 8px); /* 7 rows for days */
+            grid-auto-flow: column;
+            gap: 3px;
+            justify-content: center;
+        }
+
+        .heat-cell {
+            width: 8px; height: 8px;
+            border-radius: 2px;
+            background: rgba(255,255,255,0.05);
+            transition: all 0.2s;
+        }
+        .heat-cell:hover { transform: scale(1.6); z-index: 50; background: white; box-shadow: 0 0 8px white; }
+
+        .lvl-0 { background: rgba(255,255,255,0.04); }
+        .lvl-1 { background: rgba(99, 102, 241, 0.4); }
+        .lvl-2 { background: rgba(129, 140, 248, 0.7); box-shadow: 0 0 6px rgba(129, 140, 248, 0.3); }
+        .lvl-3 { background: #c7d2fe; box-shadow: 0 0 10px #c7d2fe; }
+
+        @keyframes hudSlideIn { from { opacity: 0; transform: translateX(-30px); } to { opacity: 1; transform: translateX(0); } }
+        
+        @keyframes flameFlicker {
+            0% { transform: scale(1); filter: drop-shadow(0 0 12px rgba(245, 158, 11, 0.5)); }
+            25% { transform: scale(1.02) rotate(-2deg); }
+            50% { transform: scale(1.05); filter: drop-shadow(0 0 20px rgba(245, 158, 11, 0.8)); }
+            75% { transform: scale(0.98) rotate(2deg); }
+            100% { transform: scale(1); filter: drop-shadow(0 0 12px rgba(245, 158, 11, 0.4)); }
+        }
+
+        /* --- NAV ISLAND --- */
         .nav-island {
-            position: absolute;
-            top: 24px;
-            left: 50%;
-            transform: translateX(-50%);
-            /* High Z-Index ensures it sits ON TOP of the graph */
+            position: absolute; top: 32px; right: 32px; /* Move to Top Right to balance the left HUD */
             z-index: 9999;
             padding: 8px 16px;
-            display: flex;
-            align-items: center;
-            gap: 16px;
-            /* Ensures mouse clicks pass to the buttons, not the graph */
+            display: flex; align-items: center; gap: 16px;
             pointer-events: auto;
             cursor: default;
         }
 
-        /* Legend / Status */
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            display: inline-block;
-            margin-right: 6px;
-        }
-
-        .dot-locked {
-            background: #333;
-        }
-
-        .dot-active {
-            background: #6366f1;
-            box-shadow: 0 0 8px #6366f1;
-        }
-
-        .dot-mastered {
-            background: #10b981;
-            box-shadow: 0 0 8px #10b981;
-        }
+        /* Legend */
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+        .dot-locked { background: #333; }
+        .dot-active { background: #6366f1; box-shadow: 0 0 8px #6366f1; }
+        .dot-mastered { background: #10b981; box-shadow: 0 0 8px #10b981; }
 
         /* Tooltip */
         .modern-tooltip {
-            position: absolute;
-            pointer-events: none;
-            opacity: 0;
+            position: absolute; pointer-events: none; opacity: 0;
             background: rgba(10, 10, 15, 0.95);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-radius: 8px;
-            padding: 12px 16px;
-            box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.8);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 8px; padding: 12px 16px;
+            box-shadow: 0 20px 40px -10px rgba(0,0,0,0.8);
             z-index: 100;
             transition: opacity 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
             transform: translateY(10px);
         }
+        .modern-tooltip.visible { opacity: 1; transform: translateY(0); }
 
-        .modern-tooltip.visible {
-            opacity: 1;
-            transform: translateY(0);
-        }
+        /* Controls */
+        .control-dock { position: absolute; bottom: 32px; right: 32px; z-index: 50; }
+        .icon-btn { width: 40px; height: 40px; display: grid; place-items: center; color: #9ca3af; cursor: pointer; }
+        .icon-btn:hover { color: white; background: rgba(255,255,255,0.05); }
 
-        /* Reset Button */
-        .control-dock {
-            position: absolute;
-            bottom: 32px;
-            right: 32px;
-            z-index: 50;
-        }
-
-        .icon-btn {
-            width: 40px;
-            height: 40px;
-            display: grid;
-            place-items: center;
-            color: #9ca3af;
-            cursor: pointer;
-        }
-
-        .icon-btn:hover {
-            color: white;
-            background: rgba(255, 255, 255, 0.05);
-        }
     </style>
 </head>
-
 <body>
     <div id="spotlight"></div>
     <div class="bg-grid"></div>
 
-    <!-- HEADER HUD -->
+    <!-- 1. HEADER HUD (Moved to Right for Balance) -->
     <div class="glass-panel nav-island">
         <div class="flex items-center gap-3 pr-4 border-r border-white/10">
             <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
             <span class="text-xs font-bold tracking-widest uppercase text-gray-300">System Online</span>
         </div>
-
+        
         {% if current_user.is_authenticated %}
-        <div class="flex items-center gap-3 text-xs">
-            <span class="text-gray-400">Operator: <span class="text-white font-semibold">{{ current_user.username
-                    }}</span></span>
-            <a href="{{ url_for('logout') }}" class="text-red-400 hover:text-red-300 font-medium">Disconnect</a>
-        </div>
+            <div class="flex items-center gap-3 text-xs">
+                <span class="text-gray-400">Operator: <span class="text-white font-semibold">{{ current_user.username }}</span></span>
+                <a href="{{ url_for('logout') }}" class="text-red-400 hover:text-red-300 font-medium z-50 relative">Disconnect</a>
+            </div>
         {% else %}
-        <a href="{{ url_for('login') }}"
-            class="text-xs font-bold text-indigo-400 hover:text-white transition-colors">INITIALIZE LOGIN</a>
+            <a href="{{ url_for('login') }}" class="text-xs font-bold text-indigo-400 hover:text-white transition-colors">INITIALIZE LOGIN</a>
         {% endif %}
     </div>
 
-    <!-- LEGEND (Bottom Left) -->
+    <!-- 2. VERTICAL STATS PANEL (Top Left) -->
+    {% if current_user.is_authenticated %}
+    <div class="hud-panel">
+        
+        <!-- GLOWING FLAME STREAK -->
+        <div class="streak-container">
+            <!-- Flame SVG -->
+            <svg class="flame-icon" viewBox="0 0 24 24" fill="currentColor">
+                 <path d="M12.9 2.1c-.2-.2-.5-.1-.7.1-2.9 3.5-5.6 7.4-5.2 11.9.1 1.7.9 3.2 2.1 4.4 1.2 1.2 2.9 1.9 4.6 1.9 3.8 0 6.8-3.3 6.8-7.3-.1-4.5-3.8-8.5-7.6-11z"/>
+            </svg>
+            <div class="streak-value">{{ current_streak }}</div>
+            <div class="streak-label">Day Streak</div>
+        </div>
+
+        <!-- MINI STATS GRID -->
+        <div class="mini-stats">
+            <div class="mini-stat-item">
+                <div class="mini-label">Best Streak</div>
+                <div class="mini-val">{{ longest_streak }}</div>
+            </div>
+            <div class="mini-stat-item">
+                <div class="mini-label">Total Solved</div>
+                <div class="mini-val highlight-text">{{ total_solved }}</div>
+            </div>
+        </div>
+
+        <!-- COMPACT HEATMAP -->
+        <div class="heat-container">
+            <div id="activity-grid" class="heat-grid"></div>
+            <div class="text-[9px] text-gray-600 mt-2 text-center font-mono uppercase tracking-wide">
+                Activity Log
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 3. LEGEND (Bottom Left) -->
     <div class="absolute bottom-8 left-8 z-50 pointer-events-none">
         <div class="glass-panel p-4 space-y-2 pointer-events-auto">
             <div class="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2">Signal Key</div>
-            <div class="flex items-center text-xs text-gray-400"><span class="status-dot dot-locked"></span> Locked
-            </div>
-            <div class="flex items-center text-xs text-white"><span class="status-dot dot-active"></span> In Progress
-            </div>
-            <div class="flex items-center text-xs text-emerald-400"><span class="status-dot dot-mastered"></span>
-                Mastered</div>
+            <div class="flex items-center text-xs text-gray-400"><span class="status-dot dot-locked"></span> Locked</div>
+            <div class="flex items-center text-xs text-white"><span class="status-dot dot-active"></span> In Progress</div>
+            <div class="flex items-center text-xs text-emerald-400"><span class="status-dot dot-mastered"></span> Mastered</div>
         </div>
     </div>
 
-    <!-- MAIN GRAPH -->
+    <!-- 4. MAIN GRAPH -->
     <div id="graph-container"></div>
-
-    <!-- TOOLTIP -->
+    
+    <!-- 5. TOOLTIP -->
     <div class="modern-tooltip"></div>
 
-    <!-- CONTROLS (Bottom Right) -->
+    <!-- 6. CONTROLS -->
     <div class="glass-panel control-dock flex overflow-hidden">
         <button id="reset-button" class="icon-btn" title="Reset Camera">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round">
-                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                <path d="M3 3v5h5" />
-            </svg>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
         </button>
     </div>
 
     <script>
-        // Spotlight Logic
         const spot = document.getElementById('spotlight');
         window.addEventListener('mousemove', e => {
             spot.style.opacity = '1';
@@ -223,8 +292,52 @@
     </script>
 
     <script> const topicProblemsMap = {{ topic_problems_map | safe }}; </script>
+    
+    <!-- COMPACT HEATMAP SCRIPT -->
+    <script>
+        const activityMap = {{ activity_map | safe }};
+        const gridContainer = document.getElementById('activity-grid');
+
+        function generateHeatmap() {
+            if (!gridContainer) return;
+            
+            const today = new Date();
+            // Show ~14 weeks for compact vertical view
+            const weeksToShow = 14; 
+            const daysToShow = weeksToShow * 7; 
+            
+            gridContainer.innerHTML = '';
+            
+            let cells = [];
+            
+            // Loop backwards from today
+            for (let i = 0; i < daysToShow; i++) {
+                const d = new Date();
+                d.setDate(today.getDate() - i);
+                const dateStr = d.toISOString().split('T')[0];
+                
+                const count = activityMap[dateStr] || 0;
+                
+                let level = 'lvl-0';
+                if (count > 0) level = 'lvl-1';
+                if (count > 2) level = 'lvl-2';
+                if (count > 4) level = 'lvl-3';
+                
+                const el = document.createElement('div');
+                el.className = `heat-cell ${level}`;
+                el.title = `${dateStr}: ${count} operations`;
+                
+                cells.push(el);
+            }
+            
+            // Reverse so recent is right/bottom
+            cells.reverse().forEach(cell => gridContainer.appendChild(cell));
+        }
+        
+        generateHeatmap();
+    </script>
+
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="{{ url_for('static', filename='js/graph.js') }}"></script>
 </body>
-
 </html>
