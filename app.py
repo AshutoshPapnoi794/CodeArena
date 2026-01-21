@@ -18,31 +18,53 @@ import re
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev_key_change_in_prod_987654321')
 
-# 1. DATABASE CONFIG
-RENDER_INSTANCE_DIR = os.environ.get('RENDER_INSTANCE_DIR', os.path.join(os.path.abspath(os.path.dirname(__file__)), 'instance'))
-if not os.path.exists(RENDER_INSTANCE_DIR):
-    os.makedirs(RENDER_INSTANCE_DIR)
-
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(RENDER_INSTANCE_DIR, 'dsa_progress.db')
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-# 2. SESSION SECURITY (Server-Side)
-app.config['SESSION_TYPE'] = 'filesystem'
-app.config['SESSION_PERMANENT'] = True
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
-app.config['SESSION_USE_SIGNER'] = True
-app.config['SESSION_KEY_PREFIX'] = 'dsa_auth:'
-# Security headers for cookies (Enable Secure=True in Production with HTTPS)
-app.config['SESSION_COOKIE_SECURE'] = False 
-app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-
 # --- INITIALIZE EXTENSIONS ---
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
 migrate = Migrate(app, db)
 server_session = Session(app)
 csrf = CSRFProtect(app)
+
+
+# 1. DATABASE CONFIG
+# Check for Render's Database URL
+database_url = os.environ.get('DATABASE_URL')
+
+if database_url:
+    # Render provides 'postgres://' but SQLAlchemy needs 'postgresql://'
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+else:
+    # Fallback to SQLite for local testing
+    RENDER_INSTANCE_DIR = os.environ.get('RENDER_INSTANCE_DIR', os.path.join(os.path.abspath(os.path.dirname(__file__)), 'instance'))
+    if not os.path.exists(RENDER_INSTANCE_DIR):
+        os.makedirs(RENDER_INSTANCE_DIR)
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(RENDER_INSTANCE_DIR, 'dsa_progress.db')
+
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# 2. SESSION SECURITY
+app.config['SESSION_TYPE'] = 'sqlalchemy'  # Changed from 'filesystem'
+app.config['SESSION_SQLALCHEMY'] = db      # Use the new database for sessions
+app.config['SESSION_PERMANENT'] = True
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
+app.config['SESSION_USE_SIGNER'] = True
+app.config['SESSION_KEY_PREFIX'] = 'dsa_auth:'
+# Security headers
+app.config['SESSION_COOKIE_SECURE'] = True # Set True for https (Render uses https)
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
+
+# *** ADD THIS BLOCK HERE ***
+with app.app_context():
+    try:
+        db.create_all()
+        print("✅ Database tables created successfully.")
+    except Exception as e:
+        print(f"❌ Error creating tables: {e}")
+# ***************************
 
 # Rate Limiter
 limiter = Limiter(
@@ -300,6 +322,4 @@ def toggle_progress():
     return jsonify({'status': 'success'})
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
     app.run(debug=True)
