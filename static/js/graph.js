@@ -2,19 +2,19 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // --- 1. CONFIGURATION ---
     const config = {
-        nodeWidth: 220,
-        nodeHeight: 64,
+        nodeWidth: 200,
+        nodeHeight: 60,
         colors: {
             locked: '#18181b',       
-            lockedStroke: '#3f3f46', 
+            lockedStroke: '#27272a', 
             active: '#1e1b4b',       
-            activeStroke: '#818cf8', 
+            activeStroke: '#6366f1', 
             mastered: '#064e3b',     
-            masteredStroke: '#34d399' 
+            masteredStroke: '#10b981' 
         }
     };
 
-    // --- 2. DATA DEFINITION ---
+    // --- 2. DATA ---
     const nodes = [
         { id: "AH", name: "Arrays & Hashing",    x: 0,    y: -500 },
         { id: "TP", name: "Two Pointers",        x: -250, y: -300 },
@@ -52,9 +52,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const nodeMap = new Map(nodes.map(n => [n.id, n]));
     const links = linksData.map(l => ({ source: nodeMap.get(l.source), target: nodeMap.get(l.target) }));
+    
     const prerequisites = new Map();
     nodes.forEach(n => prerequisites.set(n.id, []));
     linksData.forEach(l => prerequisites.get(l.target).push(l.source));
+
+    // Get outgoing links for focus mode
+    const outgoing = new Map();
+    nodes.forEach(n => outgoing.set(n.id, []));
+    linksData.forEach(l => outgoing.get(l.source).push(l.target));
 
     // --- 3. D3 SETUP ---
     const container = document.getElementById('graph-container');
@@ -69,32 +75,33 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Filters & Gradients
     const glow = defs.append("filter").attr("id", "blue-glow");
-    glow.append("feGaussianBlur").attr("stdDeviation", "3").attr("result", "coloredBlur");
+    glow.append("feGaussianBlur").attr("stdDeviation", "4").attr("result", "coloredBlur");
     const feMerge = glow.append("feMerge");
     feMerge.append("feMergeNode").attr("in", "coloredBlur");
     feMerge.append("feMergeNode").attr("in", "SourceGraphic");
 
     const linkGrad = defs.append("linearGradient").attr("id", "link-gradient").attr("gradientUnits", "userSpaceOnUse");
     linkGrad.append("stop").attr("offset", "0%").attr("stop-color", "#6366f1");
-    linkGrad.append("stop").attr("offset", "100%").attr("stop-color", "#d8b4fe");
+    linkGrad.append("stop").attr("offset", "100%").attr("stop-color", "#34d399");
 
     const lockPath = "M12 17a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm6-9h-1V6a5 5 0 0 0-10 0v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2zM9 6a3 3 0 1 1 6 0v2H9V6z";
 
     // --- CSS INJECTION ---
     const style = document.createElement('style');
     style.innerHTML = `
-        @keyframes flow { to { stroke-dashoffset: 0; } }
-        .link { fill: none; stroke-linecap: round; transition: all 0.5s; }
-        .link-inactive { stroke: #52525b; stroke-width: 2px; opacity: 0.6; }
+        @keyframes flow { from { stroke-dashoffset: 24; } to { stroke-dashoffset: 0; } }
+        .link { fill: none; stroke-linecap: round; transition: all 0.4s; }
+        .link-inactive { stroke: #3f3f46; stroke-width: 1.5px; opacity: 0.3; }
         .link-active { 
             stroke: url(#link-gradient); 
-            stroke-width: 3px; 
-            stroke-dasharray: 12, 12; 
-            stroke-dashoffset: 24; 
+            stroke-width: 2.5px; 
+            stroke-dasharray: 8, 4; 
             animation: flow 1s linear infinite; 
-            opacity: 1; 
-            filter: drop-shadow(0 0 5px rgba(99, 102, 241, 0.6));
+            opacity: 0.8; 
+            filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.4));
         }
+        .node-group { transition: opacity 0.3s; }
+        .dimmed { opacity: 0.15; filter: grayscale(100%); }
     `;
     document.head.appendChild(style);
 
@@ -102,9 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const tooltip = document.querySelector(".modern-tooltip");
 
     // --- 4. DRAWING ---
-    const linkGen = d3.linkVertical()
-        .x(d => d[0])
-        .y(d => d[1]);
+    const linkGen = d3.linkVertical().x(d => d[0]).y(d => d[1]);
 
     function generatePath(d) {
         return linkGen({
@@ -120,16 +125,55 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const node = g.append("g").selectAll("g")
         .data(nodes).join("g")
+        .attr("class", "node-group")
         .attr("transform", d => `translate(${d.x},${d.y})`)
         .style("cursor", "pointer")
         .on("click", (e, d) => {
             if (isUnlocked(d.id)) window.location.href = `/topic/${slugMap[d.id]}`;
         });
 
-    node.append("rect").attr("x", -config.nodeWidth/2).attr("y", -config.nodeHeight/2).attr("width", config.nodeWidth).attr("height", config.nodeHeight).attr("rx", 12).attr("class", "node-card").attr("stroke-width", 1.5).attr("fill", config.colors.locked).attr("stroke", config.colors.lockedStroke);
-    node.append("rect").attr("x", -config.nodeWidth/2).attr("y", -config.nodeHeight/2).attr("height", config.nodeHeight).attr("width", 0).attr("rx", 12).attr("class", "node-progress").attr("opacity", 0.1).attr("fill", "white").attr("clip-path", `inset(0 0 0 0 round 12px)`);
-    node.append("path").attr("d", lockPath).attr("transform", `translate(${-config.nodeWidth/2 + 20}, -12) scale(1)`).attr("fill", "#71717a").attr("class", "node-icon");
-    node.append("text").attr("x", 0).attr("y", 5).attr("text-anchor", "middle").attr("font-family", "Inter").attr("font-size", "14px").attr("font-weight", "500").attr("fill", "#a1a1aa").attr("class", "node-label").text(d => d.name);
+    // Node Background
+    node.append("rect")
+        .attr("x", -config.nodeWidth/2)
+        .attr("y", -config.nodeHeight/2)
+        .attr("width", config.nodeWidth)
+        .attr("height", config.nodeHeight)
+        .attr("rx", 10)
+        .attr("class", "node-card")
+        .attr("stroke-width", 1.5)
+        .attr("fill", config.colors.locked)
+        .attr("stroke", config.colors.lockedStroke);
+
+    // Progress Bar (Background Fill)
+    node.append("rect")
+        .attr("x", -config.nodeWidth/2)
+        .attr("y", -config.nodeHeight/2)
+        .attr("height", config.nodeHeight)
+        .attr("width", 0) // dynamic
+        .attr("rx", 10)
+        .attr("class", "node-progress")
+        .attr("opacity", 0.15)
+        .attr("fill", "#fff")
+        .attr("clip-path", `inset(0 0 0 0 round 10px)`);
+
+    // Lock Icon
+    node.append("path")
+        .attr("d", lockPath)
+        .attr("transform", `translate(${-config.nodeWidth/2 + 20}, -12) scale(1)`)
+        .attr("fill", "#52525b")
+        .attr("class", "node-icon");
+
+    // Text
+    node.append("text")
+        .attr("x", 0)
+        .attr("y", 5)
+        .attr("text-anchor", "middle")
+        .attr("font-family", "Inter")
+        .attr("font-size", "14px")
+        .attr("font-weight", "600")
+        .attr("fill", "#71717a")
+        .attr("class", "node-label")
+        .text(d => d.name);
 
     // --- 5. LOGIC & STATE ---
     let solvedMapCache = new Map();
@@ -162,71 +206,118 @@ document.addEventListener('DOMContentLoaded', () => {
         node.each(function(d) {
             const unlocked = isUnlocked(d.id);
             const prog = calculateProgress(d.id);
-            
             const displayPct = unlocked ? prog.pct : 0;
-            
-            const el = d3.select(this);
             const mastered = displayPct === 100;
-            const t = d3.transition().duration(600).ease(d3.easeCubicOut);
 
-            let stroke = unlocked ? (mastered ? config.colors.masteredStroke : config.colors.activeStroke) : config.colors.lockedStroke;
-            let fill = unlocked ? config.colors.active : config.colors.locked;
-            let glowFilter = unlocked ? "url(#blue-glow)" : null;
+            const el = d3.select(this);
+            const t = d3.transition().duration(600);
 
-            el.select(".node-card").transition(t).attr("stroke", stroke).attr("fill", fill).style("filter", glowFilter);
-            el.select(".node-progress").transition(t).attr("width", config.nodeWidth * (displayPct / 100)).attr("fill", mastered ? "#10b981" : "#818cf8");
-            el.select(".node-icon").transition(t).attr("opacity", unlocked ? 0 : 1);
-            el.select(".node-label").transition(t).attr("fill", unlocked ? "#fff" : "#a1a1aa").attr("font-weight", unlocked ? "600" : "500");
+            // Determine Colors
+            let stroke = config.colors.lockedStroke;
+            let fill = config.colors.locked;
+            let glowFilter = null;
+            let labelColor = "#71717a";
 
+            if (unlocked) {
+                fill = config.colors.active;
+                stroke = config.colors.activeStroke;
+                labelColor = "#e4e4e7";
+                glowFilter = "url(#blue-glow)";
+                if (mastered) {
+                    fill = config.colors.mastered;
+                    stroke = config.colors.masteredStroke;
+                }
+            }
+
+            el.select(".node-card").transition(t)
+                .attr("stroke", stroke)
+                .attr("fill", fill)
+                .style("filter", glowFilter);
+
+            el.select(".node-progress").transition(t)
+                .attr("width", config.nodeWidth * (displayPct / 100))
+                .attr("fill", mastered ? "#34d399" : "#818cf8");
+
+            el.select(".node-icon").transition(t)
+                .attr("opacity", unlocked ? 0 : 1);
+
+            el.select(".node-label").transition(t)
+                .attr("fill", labelColor);
+
+            // Update Link Classes
             link.filter(l => l.source.id === d.id).attr("class", unlocked ? "link link-active" : "link link-inactive");
         });
     }
 
-    // --- 6. INTERACTION (FIXED MOUSELEAVE) ---
+    // --- 6. INTERACTION (FOCUS MODE) ---
+    
+    function setFocus(d, isFocused) {
+        if (!isFocused) {
+            // Reset everything
+            node.classed("dimmed", false);
+            link.style("opacity", null);
+            return;
+        }
+
+        // Identify related nodes (Parents + Children)
+        const related = new Set();
+        related.add(d.id);
+        (prerequisites.get(d.id) || []).forEach(p => related.add(p));
+        (outgoing.get(d.id) || []).forEach(c => related.add(c));
+
+        // Dim unrelated nodes
+        node.classed("dimmed", n => !related.has(n.id));
+
+        // Highlight relevant links
+        link.style("opacity", l => {
+            if (l.source.id === d.id || l.target.id === d.id) return 1;
+            return 0.05;
+        });
+    }
+
     node.on("mouseenter", function(e, d) {
         if(!isUnlocked(d.id)) return;
-        
-        // Scale Animation
-        d3.select(this).transition().duration(200).attr("transform", `translate(${d.x},${d.y}) scale(1.05)`);
 
-        // Tooltip Content
+        // Visual Pop
+        d3.select(this).transition().duration(200).attr("transform", `translate(${d.x},${d.y}) scale(1.05)`);
+        
+        // Focus Mode
+        setFocus(d, true);
+
+        // Tooltip
         const prog = calculateProgress(d.id);
         tooltip.innerHTML = `
-            <div style="font-weight:700;margin-bottom:4px;font-size:14px;color:white;">${d.name}</div>
+            <div style="font-weight:700;margin-bottom:6px;font-size:14px;color:white;">${d.name}</div>
             <div style="display:flex;justify-content:space-between;font-size:12px;color:#9ca3af;">
-                <span>Progress</span>
+                <span>Mastery</span>
                 <span style="color:${prog.pct===100?'#34d399':'#818cf8'};font-family:'JetBrains Mono'">${Math.round(prog.pct)}%</span>
             </div>
+            <div style="width:100%;height:4px;background:#333;margin-top:6px;border-radius:2px;overflow:hidden;">
+                <div style="width:${prog.pct}%;height:100%;background:${prog.pct===100?'#34d399':'#6366f1'};"></div>
+            </div>
         `;
-        
-        // Show Tooltip
         tooltip.classList.add("visible");
-        
-        // Initial positioning
         tooltip.style.left = (e.clientX + 20) + "px"; 
         tooltip.style.top = (e.clientY - 40) + "px";
 
-    }).on("mouseleave", function(e, d) { // <--- ADDED (e, d) HERE
-        
-        // Reset Scale
+    }).on("mouseleave", function(e, d) {
         d3.select(this).transition().duration(200).attr("transform", `translate(${d.x},${d.y}) scale(1)`);
-        
-        // Hide Tooltip
+        setFocus(d, false);
         tooltip.classList.remove("visible");
-        
     }).on("mousemove", e => { 
-        // Keep tooltip following mouse
         tooltip.style.left = (e.clientX + 20) + "px"; 
         tooltip.style.top = (e.clientY - 40) + "px"; 
     });
 
     const zoom = d3.zoom().scaleExtent([0.3, 2]).on("zoom", e => g.attr("transform", e.transform));
     svg.call(zoom);
-    const initialTransform = d3.zoomIdentity.translate(width/2, height/2 + 400).scale(0.65);
+    const initialTransform = d3.zoomIdentity.translate(width/2, height/2 + 300).scale(0.65);
     svg.call(zoom.transform, initialTransform);
-    document.getElementById("reset-button").onclick = () => svg.transition().duration(800).call(zoom.transform, initialTransform);
+    
+    document.getElementById("reset-button").onclick = () => {
+        svg.transition().duration(800).call(zoom.transform, initialTransform);
+    };
 
-    // --- 7. AUTO-REFRESH ---
     fetchProgress();
     window.addEventListener('pageshow', () => fetchProgress());
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') fetchProgress(); });
