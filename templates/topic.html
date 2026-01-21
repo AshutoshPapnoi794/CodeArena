@@ -6,7 +6,9 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Marked.js (Pinned Version for Stability) -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@9.1.2/marked.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     
     <style>
         :root { --bg: #030303; --primary: #6366f1; }
@@ -16,7 +18,6 @@
         .glass-hud { background: rgba(3, 3, 3, 0.9); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(255,255,255,0.05); position: sticky; top: 0; z-index: 50; }
         
         /* --- TIMELINE CONTAINER --- */
-        /* Increased width to allow for a wider "river" meander */
         .timeline-wrapper { position: relative; max-width: 1000px; margin: 0 auto; padding: 100px 20px 200px; }
         
         /* SVG Layer */
@@ -25,42 +26,21 @@
             z-index: 0; pointer-events: none; overflow: visible;
         }
         
-        .roadmap-path {
-            fill: none;
-            stroke: rgba(255, 255, 255, 0.08);
-            stroke-width: 4px; /* Thicker line */
-            stroke-linecap: round;
-        }
-        
+        .roadmap-path { fill: none; stroke: rgba(255, 255, 255, 0.08); stroke-width: 4px; stroke-linecap: round; }
         .roadmap-path-active {
-            fill: none;
-            stroke: #10b981; 
-            stroke-width: 4px;
-            stroke-linecap: round;
-            filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.5));
-            transition: stroke-dashoffset 1s ease-out;
+            fill: none; stroke: #10b981; stroke-width: 4px; stroke-linecap: round;
+            filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.5)); transition: stroke-dashoffset 1s ease-out;
         }
 
         /* --- ITEMS --- */
         .timeline-item {
-            position: relative; z-index: 10;
-            width: 35%; /* Smaller text width to create a HUGE gap in middle */
-            margin-bottom: 150px; /* Massive vertical spacing for smooth curves */
-            transition: opacity 0.3s;
+            position: relative; z-index: 10; width: 35%; margin-bottom: 150px; transition: opacity 0.3s;
         }
-        
-        /* TEXT ALIGNMENT & DOT POSITIONING */
-        /* We push the dots FAR out into the center gap to create the wave amplitude */
-        
         .timeline-item.left { margin-right: auto; text-align: right; }
-        /* Dot is 40% to the right of the text box (pushes into center) */
         .timeline-item.left .connector-dot { right: -40%; } 
-
         .timeline-item.right { margin-left: auto; text-align: left; }
-        /* Dot is 40% to the left of the text box */
         .timeline-item.right .connector-dot { left: -40%; }
 
-        /* Mobile: Collapse to straight line */
         @media (max-width: 768px) {
             .timeline-item { width: 90%; margin: 0 auto 80px auto !important; text-align: center !important; }
             .timeline-item .connector-dot { left: 50% !important; right: auto !important; top: -40px !important; transform: translateX(-50%) !important; }
@@ -69,37 +49,24 @@
 
         /* --- THE DOTS (Rings) --- */
         .connector-dot {
-            position: absolute; top: 50%; 
-            background: #030303; 
-            border-radius: 50%; 
-            transform: translateY(-50%);
-            z-index: 20; 
+            position: absolute; top: 50%; background: #030303; border-radius: 50%; 
+            transform: translateY(-50%); z-index: 20; 
             transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             box-shadow: 0 0 20px rgba(0,0,0,1);
         }
-
-        /* Size & Colors */
         .dot-Easy { width: 18px; height: 18px; border: 3px solid #34d399; }
         .dot-Medium { width: 28px; height: 28px; border: 3px solid #fbbf24; }
         .dot-Hard { width: 38px; height: 38px; border: 3px solid #f87171; }
 
-        /* Interaction */
         .timeline-item:hover .connector-dot { transform: translateY(-50%) scale(1.2); box-shadow: 0 0 25px rgba(255,255,255,0.15); }
-        .timeline-item:hover .problem-title { color: #fff; }
-
-        /* Solved State */
         .timeline-item.solved .dot-Easy { background: #34d399; box-shadow: 0 0 20px #34d399; }
         .timeline-item.solved .dot-Medium { background: #fbbf24; box-shadow: 0 0 20px #fbbf24; }
         .timeline-item.solved .dot-Hard { background: #f87171; box-shadow: 0 0 20px #f87171; }
-        
         .timeline-item.solved .problem-title { color: #6b7280; text-decoration: line-through; }
         .timeline-item.solved { opacity: 0.5; }
 
         /* Typography */
-        .problem-title {
-            font-size: 1.5rem; font-weight: 800; color: #e5e7eb;
-            letter-spacing: -0.02em; margin-bottom: 6px;
-        }
+        .problem-title { font-size: 1.5rem; font-weight: 800; color: #e5e7eb; letter-spacing: -0.02em; margin-bottom: 6px; }
         .problem-meta { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: #9ca3af; }
         
         /* Buttons */
@@ -110,10 +77,176 @@
             border: 1px solid rgba(255,255,255,0.1);
             color: #9ca3af; text-decoration: none;
             background: rgba(255,255,255,0.02);
-            transition: all 0.2s;
+            transition: all 0.2s; cursor: pointer;
         }
         .btn-minimal:hover { background: #fff; color: #000; border-color: #fff; }
+        .btn-note:hover { background: #818cf8; color: #fff; border-color: #818cf8; }
+
+        /* --- NOTE MODAL SYSTEM --- */
+        .note-modal-overlay {
+            position: fixed; inset: 0; z-index: 100;
+            background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(12px);
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0; pointer-events: none; transition: opacity 0.3s;
+        }
+        .note-modal-overlay.active { opacity: 1; pointer-events: auto; }
+
+        .note-modal {
+            width: 90%; max-width: 960px; height: 90vh;
+            background: #09090b; border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 24px; box-shadow: 0 40px 80px -12px rgba(0,0,0,1);
+            display: flex; flex-direction: column; overflow: hidden;
+            transform: translateY(20px); transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .note-modal-overlay.active .note-modal { transform: translateY(0); }
+
+        .note-header {
+            padding: 16px 24px; border-bottom: 1px solid rgba(255,255,255,0.05);
+            display: flex; justify-content: space-between; align-items: center;
+            background: rgba(255,255,255,0.02);
+        }
         
+        /* Tabs */
+        .note-tabs { display: flex; gap: 8px; background: rgba(255,255,255,0.05); padding: 4px; border-radius: 8px; }
+        .note-tabs button {
+            background: none; border: none; color: #71717a; font-weight: 600;
+            font-size: 13px; padding: 6px 14px; cursor: pointer; transition: all 0.2s;
+            font-family: 'Inter', sans-serif; border-radius: 6px;
+        }
+        .note-tabs button.active { color: #fff; background: rgba(255,255,255,0.1); }
+        .note-tabs button:hover:not(.active) { color: #d4d4d8; }
+
+        /* Body Container */
+        .note-body { flex: 1; display: flex; position: relative; overflow: hidden; }
+        
+        /* Editor & Preview Base */
+        .note-editor, .note-preview {
+            width: 100%; height: 100%; 
+            padding: 40px 60px; /* Generous padding */
+            background: transparent; border: none; outline: none; resize: none; 
+            overflow-y: auto; display: none;
+        }
+        .note-editor.active, .note-preview.active { display: block; }
+        
+        /* --- OPTIMIZED TYPOGRAPHY (Google Fonts Knowledge) --- */
+        .note-editor {
+            font-family: 'JetBrains Mono', monospace; font-size: 15px; line-height: 1.6; color: #d4d4d8;
+        }
+
+        .note-preview { 
+            color: #e4e4e7; /* High contrast but not harsh white */
+        }
+
+        /* Constrain measure (line length) for readability (approx 68 chars) */
+        .note-content-limit {
+            max-width: 68ch; 
+            margin: 0 auto; /* Center content */
+            font-family: 'Inter', sans-serif; 
+            font-size: 17px; /* Large, comfortable base size */
+            line-height: 1.75; /* Tall line height (175%) for ease of scanning */
+            font-weight: 400;
+        }
+        
+        /* Headings - Visual Hierarchy */
+        .note-preview h1 { 
+            font-size: 2.5em; font-weight: 800; margin: 0 0 0.8em 0; letter-spacing: -0.03em; line-height: 1.2;
+            background: linear-gradient(90deg, #fff, #a1a1aa); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 20px;
+        }
+        .note-preview h2 { 
+            font-size: 1.75em; font-weight: 700; color: #fff; margin: 1.8em 0 0.6em 0; 
+            letter-spacing: -0.02em; line-height: 1.3;
+        }
+        .note-preview h3 { font-size: 1.35em; font-weight: 600; color: #818cf8; margin: 1.5em 0 0.5em 0; }
+        
+        /* Body Text */
+        .note-preview p { margin-bottom: 1.5em; }
+        .note-preview strong { color: #fff; font-weight: 700; }
+        .note-preview em { color: #c7d2fe; font-style: italic; }
+        .note-preview a { color: #60a5fa; text-decoration: none; border-bottom: 1px solid rgba(96, 165, 250, 0.4); transition: border-color 0.2s; }
+        .note-preview a:hover { border-color: #60a5fa; }
+        
+        /* Callouts / Blockquotes */
+        .note-preview blockquote { 
+            border-left: 3px solid #6366f1; 
+            margin: 32px 0; 
+            background: rgba(24, 24, 27, 0.6);
+            padding: 24px 32px; 
+            border-radius: 8px;
+            color: #d1d5db; font-style: italic;
+            font-size: 0.95em;
+        }
+
+        /* Lists */
+        .note-preview ul { list-style: none; padding-left: 0; margin-bottom: 1.5em; }
+        .note-preview ul li { position: relative; padding-left: 28px; margin-bottom: 10px; }
+        .note-preview ul li::before { 
+            content: "•"; color: #818cf8; font-weight: bold; font-size: 1.4em; line-height: 1;
+            position: absolute; left: 6px; top: 0px; 
+        }
+        .note-preview ol { counter-reset: item; padding-left: 0; margin-bottom: 1.5em; }
+        .note-preview ol li { position: relative; padding-left: 32px; margin-bottom: 10px; }
+        .note-preview ol li::before {
+            content: counter(item) "."; counter-increment: item;
+            color: #6366f1; font-weight: 700; font-family: 'JetBrains Mono'; font-size: 14px;
+            position: absolute; left: 0; top: 4px;
+        }
+
+        /* --- CODE BLOCKS & COPY BUTTON --- */
+        .code-wrapper {
+            position: relative;
+            margin: 32px 0;
+            width: 100%; 
+        }
+
+        .note-preview pre { 
+            background: #18181b; 
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px; 
+            padding: 48px 24px 24px 24px; /* Top padding for Traffic Lights */
+            overflow-x: auto; 
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        
+        /* Traffic Lights (Visual Cue) */
+        .note-preview pre::before {
+            content: ""; position: absolute; top: 18px; left: 18px;
+            width: 10px; height: 10px; border-radius: 50%;
+            background: #ef4444; /* Red */
+            box-shadow: 18px 0 0 #f59e0b, 36px 0 0 #10b981; /* Yellow, Green */
+            z-index: 10;
+        }
+
+        /* Copy Button */
+        .copy-btn {
+            position: absolute; top: 10px; right: 10px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #a1a1aa;
+            font-size: 12px; font-weight: 600; font-family: 'Inter', sans-serif;
+            padding: 6px 12px; border-radius: 6px;
+            cursor: pointer; z-index: 20;
+            transition: all 0.2s;
+            opacity: 0; transform: translateY(2px);
+        }
+        .code-wrapper:hover .copy-btn { opacity: 1; transform: translateY(0); }
+        .copy-btn:hover { background: rgba(255,255,255,0.1); color: white; }
+        .copy-btn.copied { background: #10b981; color: white; border-color: #10b981; }
+
+        .note-preview code { font-family: 'JetBrains Mono', monospace; font-size: 14px; }
+        .note-preview p code, .note-preview li code {
+            background: rgba(129, 140, 248, 0.1); color: #c7d2fe;
+            padding: 2px 6px; border-radius: 4px; font-size: 0.85em; 
+            border: 1px solid rgba(129, 140, 248, 0.2);
+        }
+        .note-preview pre code { color: #e4e4e7; background: transparent; padding: 0; border: none; }
+
+        /* Scrollbar */
+        .note-editor::-webkit-scrollbar, .note-preview::-webkit-scrollbar { width: 8px; }
+        .note-editor::-webkit-scrollbar-track, .note-preview::-webkit-scrollbar-track { background: transparent; }
+        .note-editor::-webkit-scrollbar-thumb, .note-preview::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+        .note-editor::-webkit-scrollbar-thumb:hover, .note-preview::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
     </style>
 </head>
 <body>
@@ -140,10 +273,81 @@
         <div id="items-container"></div>
     </div>
 
+    <!-- NOTE MODAL -->
+    <div class="note-modal-overlay" id="note-modal-overlay">
+        <div class="note-modal">
+            <div class="note-header">
+                <div class="note-tabs">
+                    <button id="tab-preview" onclick="switchTab('preview')">PREVIEW</button>
+                    <button id="tab-write" onclick="switchTab('write')">WRITE</button>
+                </div>
+                <div class="flex gap-4 items-center">
+                    <span id="save-status" class="text-[10px] text-gray-500 font-mono uppercase tracking-wider"></span>
+                    <button onclick="saveNote()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-1.5 rounded-full text-xs font-bold tracking-wider transition shadow-lg shadow-indigo-500/20">SAVE</button>
+                    <button onclick="closeNoteModal()" class="text-gray-500 hover:text-white transition">
+                        <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                    </button>
+                </div>
+            </div>
+            <div class="note-body">
+                <textarea id="note-editor" class="note-editor" placeholder="Type your markdown here..."></textarea>
+                <!-- Preview wrapped in content-limit div for readability -->
+                <div id="note-preview" class="note-preview active"></div>
+            </div>
+        </div>
+    </div>
+
     <script>
         const allProblems = {{ problems | tojson | safe }};
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         let solvedIds = new Set();
+        let currentProblemId = null;
+        let currentProblemTitle = "";
+
+        // --- CONFIGURE MARKED.JS (MODERN SYNTAX) ---
+        // We use marked.use() to add the custom renderer for code blocks
+        marked.use({
+            renderer: {
+                code(code, language) {
+                    // Manually escape for HTML safety inside the block
+                    const escapedCode = code.replace(/&/g, "&amp;")
+                                            .replace(/</g, "&lt;")
+                                            .replace(/>/g, "&gt;")
+                                            .replace(/"/g, "&quot;")
+                                            .replace(/'/g, "&#039;");
+                    
+                    return `
+                        <div class="code-wrapper">
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                            <pre><code class="language-${language || 'text'}">${escapedCode}</code></pre>
+                        </div>
+                    `;
+                }
+            }
+        });
+
+        // --- BOILERPLATE TEMPLATE ---
+        const getBoilerplate = (title) => `
+# ${title}
+
+## 💡 Intuition
+<!-- Describe your initial thoughts here -->
+
+## 🧠 Approach
+1. 
+2. 
+
+## ⏱️ Complexity
+- **Time:** O(n)
+- **Space:** O(1)
+
+## 💻 Code
+\`\`\`python
+class Solution:
+    def solve(self):
+        pass
+\`\`\`
+`;
 
         async function init() {
             try {
@@ -157,6 +361,16 @@
             render();
             setTimeout(() => { drawPath(); updateProgress(); }, 150);
             window.addEventListener('resize', drawPath);
+
+            // Save shortcut (Ctrl/Cmd + S)
+            document.addEventListener('keydown', e => {
+                if((e.metaKey || e.ctrlKey) && e.key === 's') {
+                    e.preventDefault();
+                    if(document.getElementById('note-modal-overlay').classList.contains('active')) {
+                        saveNote();
+                    }
+                }
+            });
         }
 
         function render() {
@@ -181,10 +395,13 @@
                             ${p.AcceptanceRate}% ACC
                         </div>
                         
-                        <div class="flex gap-3 ${side === 'left' ? 'justify-end' : 'justify-start'}">
+                        <div class="flex gap-2 ${side === 'left' ? 'justify-end' : 'justify-start'}">
                             <a href="${p.Link}" target="_blank" class="btn-minimal">Open</a>
                             <button onclick="toggleSolve(${p.ID}, ${index}, event)" class="btn-minimal">
                                 ${isSolved ? 'Undo' : 'Complete'}
+                            </button>
+                            <button onclick="openNoteModal(${p.ID}, '${p.Title.replace(/'/g, "\\'")}')" class="btn-minimal btn-note">
+                                Notes
                             </button>
                         </div>
                     </div>
@@ -193,7 +410,7 @@
             });
         }
 
-        // --- ENHANCED CURVE ALGORITHM ---
+        // --- GRAPHICS ---
         function drawPath() {
             const svg = document.getElementById('path-svg');
             const bgPath = document.getElementById('bg-path');
@@ -216,27 +433,14 @@
             dots.forEach((dot, i) => {
                 const rect = dot.getBoundingClientRect();
                 const containerRect = wrapper.getBoundingClientRect();
-                
                 const currentX = (rect.left - containerRect.left) + (rect.width / 2);
                 const currentY = (rect.top - containerRect.top) + (rect.height / 2);
-
                 const distY = currentY - lastY;
-                
-                // --- MAGIC FOR CIRCULAR CURVES ---
-                // For a visually "circular" arc between two points, the control handle length
-                // should be roughly 0.5 to 0.6 times the vertical distance.
-                // Since we increased horizontal spacing, we need looser tension.
                 const tension = distY * 0.5; 
-                
                 d += ` C ${lastX} ${lastY + tension}, ${currentX} ${currentY - tension}, ${currentX} ${currentY}`;
-
-                lastX = currentX;
-                lastY = currentY;
+                lastX = currentX; lastY = currentY;
             });
-
-            // Gentle trail off
             d += ` C ${lastX} ${lastY + 150}, ${startX} ${lastY + 250}, ${startX} ${lastY + 350}`;
-
             bgPath.setAttribute('d', d);
             activePath.setAttribute('d', d);
             updatePathProgress(activePath);
@@ -245,12 +449,10 @@
         function updatePathProgress(pathEl) {
             const totalLen = pathEl.getTotalLength();
             pathEl.style.strokeDasharray = totalLen;
-            
             let lastSolvedIndex = -1;
             document.querySelectorAll('.timeline-item').forEach((item, idx) => {
                 if (item.classList.contains('solved')) lastSolvedIndex = idx;
             });
-
             if (lastSolvedIndex === -1) {
                 pathEl.style.strokeDashoffset = totalLen;
             } else {
@@ -260,13 +462,13 @@
                      const wrapper = document.querySelector('.timeline-wrapper');
                      const relativeY = dot.getBoundingClientRect().top - wrapper.getBoundingClientRect().top;
                      const ratio = relativeY / wrapper.scrollHeight;
-                     // Fill past the dot to next curve start
                      const offset = totalLen * (1 - ratio) - 100; 
                      pathEl.style.strokeDashoffset = Math.max(0, offset);
                 }
             }
         }
 
+        // --- ACTIONS ---
         async function toggleSolve(id, index, event) {
             const sid = String(id);
             const isSolving = !solvedIds.has(sid);
@@ -288,10 +490,8 @@
                 item.classList.remove('solved');
                 btn.innerText = "Complete";
             }
-            
             updateProgress();
             drawPath();
-
             await fetch('/api/progress/toggle', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
@@ -302,6 +502,111 @@
         function updateProgress() {
             const pct = Math.round((solvedIds.size / allProblems.length) * 100) || 0;
             document.getElementById('progress-pct').innerText = `${pct}%`;
+        }
+
+        // --- NOTE SYSTEM LOGIC ---
+        const overlay = document.getElementById('note-modal-overlay');
+        const editor = document.getElementById('note-editor');
+        const preview = document.getElementById('note-preview');
+
+        async function openNoteModal(problemId, title) {
+            currentProblemId = problemId;
+            currentProblemTitle = title;
+            
+            overlay.classList.add('active');
+            editor.value = "Loading...";
+            
+            try {
+                const res = await fetch(`/api/notes/${problemId}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.content && data.content.trim().length > 0) {
+                        editor.value = data.content;
+                    } else {
+                        editor.value = getBoilerplate(currentProblemTitle);
+                    }
+                    switchTab('preview');
+                }
+            } catch(e) { 
+                editor.value = getBoilerplate(currentProblemTitle);
+                switchTab('preview');
+            }
+        }
+
+        function closeNoteModal() {
+            overlay.classList.remove('active');
+            currentProblemId = null;
+        }
+
+        function switchTab(mode) {
+            const tabP = document.getElementById('tab-preview');
+            const tabW = document.getElementById('tab-write');
+            
+            if(mode === 'write') {
+                tabW.classList.add('active');
+                tabP.classList.remove('active');
+                editor.classList.add('active');
+                preview.classList.remove('active');
+                editor.focus(); 
+            } else {
+                tabP.classList.add('active');
+                tabW.classList.remove('active');
+                editor.classList.remove('active');
+                preview.classList.add('active');
+                
+                // --- RENDER LOGIC ---
+                // Parse markdown and wrap in container for readability limit
+                try {
+                    const raw = editor.value || ""; // Safety check
+                    const htmlContent = marked.parse(raw);
+                    preview.innerHTML = `<div class="note-content-limit">${htmlContent}</div>`;
+                } catch(err) {
+                    console.error("Markdown rendering failed:", err);
+                    preview.innerHTML = `<div class="text-red-400 p-4">Error rendering preview.</div>`;
+                }
+            }
+        }
+
+        async function saveNote() {
+            if(!currentProblemId) return;
+            const status = document.getElementById('save-status');
+            status.innerText = "SYNCING...";
+            status.style.color = "#facc15"; 
+            
+            try {
+                await fetch('/api/notes/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                    body: JSON.stringify({
+                        problem_id: currentProblemId,
+                        content: editor.value
+                    })
+                });
+                status.innerText = "SAVED";
+                status.style.color = "#34d399"; 
+                setTimeout(() => status.innerText = "", 2000);
+            } catch(e) {
+                status.innerText = "FAILED";
+                status.style.color = "#f87171"; 
+            }
+        }
+
+        // --- CLIPBOARD FUNCTION ---
+        function copyCode(btn) {
+            const wrapper = btn.closest('.code-wrapper');
+            const codeBlock = wrapper.querySelector('code');
+            const text = codeBlock.innerText; // Get raw text
+            
+            navigator.clipboard.writeText(text).then(() => {
+                const originalText = btn.innerText;
+                btn.innerText = "Copied!";
+                btn.classList.add('copied');
+                
+                setTimeout(() => {
+                    btn.innerText = originalText;
+                    btn.classList.remove('copied');
+                }, 2000);
+            });
         }
 
         init();

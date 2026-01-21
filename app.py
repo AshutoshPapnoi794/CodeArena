@@ -68,12 +68,13 @@ login_manager.login_message_category = "error"
 
 DATA = pd.DataFrame()
 
-# --- MODELS (MUST BE DEFINED BEFORE db.create_all) ---
+# --- MODELS ---
 class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(30), unique=True, nullable=False, index=True)
     password = db.Column(db.String(128), nullable=False)
     solved_problems = db.relationship('SolvedProblem', backref='solver', lazy=True)
+    notes = db.relationship('Note', backref='author', lazy=True)
 
 class SolvedProblem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -82,11 +83,19 @@ class SolvedProblem(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     __table_args__ = (db.UniqueConstraint('user_id', 'problem_id', name='_user_problem_uc'),)
 
+class Note(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    problem_id = db.Column(db.Integer, nullable=False)
+    content = db.Column(db.Text, nullable=True) # Markdown content
+    updated_at = db.Column(db.DateTime, nullable=False, default=db.func.now(), onupdate=db.func.now())
+    __table_args__ = (db.UniqueConstraint('user_id', 'problem_id', name='_user_problem_note_uc'),)
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# --- ENSURE TABLES EXIST (NOW IN CORRECT SPOT) ---
+# --- ENSURE TABLES EXIST ---
 with app.app_context():
     try:
         db.create_all()
@@ -206,7 +215,6 @@ def login():
         user = User.query.filter_by(username=username).first()
         if user and bcrypt.check_password_hash(user.password, password):
             session.clear() 
-            # remember=False prevents the redirect loop
             login_user(user, remember=False)
             return redirect(request.args.get('next') or url_for('index'))
         else:
@@ -244,7 +252,6 @@ def logout():
     logout_user()
     session.clear()
     response = redirect(url_for('login'))
-    # Aggressively clear cookies to prevent loop
     response.set_cookie('session', '', expires=0, path='/')
     response.set_cookie('remember_token', '', expires=0, path='/')
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
@@ -257,41 +264,30 @@ def logout():
 def index():
     if DATA.empty: return "Data Error: Run helper.py", 500
     
-    # 1. Fetch User Progress for Heatmap
     solved = SolvedProblem.query.filter_by(user_id=current_user.id).order_by(SolvedProblem.solved_at.asc()).all()
     
-    # 2. Process Dates for Heatmap
     activity_map = {}
     distinct_dates = set()
-    
     for s in solved:
         d_str = s.solved_at.strftime('%Y-%m-%d')
         activity_map[d_str] = activity_map.get(d_str, 0) + 1
         distinct_dates.add(s.solved_at.date())
         
-    # 3. Calculate Streaks
     sorted_dates = sorted(list(distinct_dates))
     current_streak = 0
     longest_streak = 0
-    
     if sorted_dates:
         today = datetime.now().date()
         yesterday = today - timedelta(days=1)
-        
-        # Check current streak
         if sorted_dates[-1] == today or sorted_dates[-1] == yesterday:
             current_streak = 1
             for i in range(len(sorted_dates)-1, 0, -1):
-                if (sorted_dates[i] - sorted_dates[i-1]).days == 1:
-                    current_streak += 1
-                else:
-                    break
+                if (sorted_dates[i] - sorted_dates[i-1]).days == 1: current_streak += 1
+                else: break
         
-        # Check Max streak
         temp_streak = 1
         for i in range(1, len(sorted_dates)):
-            if (sorted_dates[i] - sorted_dates[i-1]).days == 1:
-                temp_streak += 1
+            if (sorted_dates[i] - sorted_dates[i-1]).days == 1: temp_streak += 1
             else:
                 longest_streak = max(longest_streak, temp_streak)
                 temp_streak = 1
@@ -324,12 +320,35 @@ def toggle_progress():
     data = request.get_json()
     pid = data.get('problem_id')
     entry = SolvedProblem.query.filter_by(user_id=current_user.id, problem_id=int(pid)).first()
-    
     if data.get('solved') and not entry:
         db.session.add(SolvedProblem(user_id=current_user.id, problem_id=int(pid)))
     elif not data.get('solved') and entry:
         db.session.delete(entry)
-        
+    db.session.commit()
+    return jsonify({'status': 'success'})
+
+# --- NOTE ROUTES ---
+
+@app.route('/api/notes/<int:problem_id>', methods=['GET'])
+@login_required
+def get_note(problem_id):
+    note = Note.query.filter_by(user_id=current_user.id, problem_id=problem_id).first()
+    return jsonify({'content': note.content if note else ''})
+
+@app.route('/api/notes/save', methods=['POST'])
+@login_required
+def save_note():
+    data = request.get_json()
+    problem_id = data.get('problem_id')
+    content = data.get('content')
+    
+    note = Note.query.filter_by(user_id=current_user.id, problem_id=problem_id).first()
+    if note:
+        note.content = content
+    else:
+        new_note = Note(user_id=current_user.id, problem_id=problem_id, content=content)
+        db.session.add(new_note)
+    
     db.session.commit()
     return jsonify({'status': 'success'})
 
