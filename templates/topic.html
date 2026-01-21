@@ -3,121 +3,147 @@
 <head>
     <meta charset="UTF-8">
     <title>{{ topic_name }} // Mastery</title>
-    <!-- SECURITY: CSRF Token for AJAX -->
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     
     <style>
-        :root { --bg: #030303; --card: #0a0a0a; --border: rgba(255,255,255,0.08); --primary: #6366f1; --success: #10b981; }
+        :root { --bg: #030303; --primary: #6366f1; }
         body { background: var(--bg); color: #fff; font-family: 'Inter', sans-serif; overflow-x: hidden; }
 
-        /* HUD & Progress */
-        .glass-hud { background: rgba(10, 10, 10, 0.6); backdrop-filter: blur(16px); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 50; }
-        .liquid-bar-bg { background: rgba(255,255,255,0.05); height: 6px; border-radius: 99px; overflow: hidden; position: relative; }
-        .liquid-bar-fill { height: 100%; border-radius: 99px; transition: width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); position: relative; }
-        .liquid-bar-fill::after { content: ''; position: absolute; top: 0; left: 0; bottom: 0; right: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent); transform: translateX(-100%); animation: shimmer 2s infinite; }
-
-        /* Problem Row */
-        .problem-row { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 24px; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); position: relative; overflow: hidden; transform-origin: center; }
-        .problem-row::before { content: ''; position: absolute; inset: 0; background: radial-gradient(600px circle at var(--mouse-x) var(--mouse-y), rgba(255,255,255,0.04), transparent 40%); opacity: 0; transition: opacity 0.3s; pointer-events: none; }
-        .problem-row:hover::before { opacity: 1; }
-        .problem-row:hover { border-color: rgba(255,255,255,0.2); transform: translateY(-2px) scale(1.005); box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5); z-index: 10; }
+        /* --- HUD --- */
+        .glass-hud { background: rgba(3, 3, 3, 0.9); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(255,255,255,0.05); position: sticky; top: 0; z-index: 50; }
         
-        .problem-row.solved { background: rgba(16, 185, 129, 0.03); border-color: rgba(16, 185, 129, 0.2); }
-        .problem-row.solved .problem-title { color: #6b7280; }
-
-        /* Strikethrough */
-        .problem-title { position: relative; display: inline-block; transition: color 0.3s; }
-        .strikethrough-line { position: absolute; top: 50%; left: 0; width: 0%; height: 2px; background: #10b981; border-radius: 2px; transition: width 0.4s cubic-bezier(0.65, 0, 0.35, 1); pointer-events: none; box-shadow: 0 0 8px rgba(16, 185, 129, 0.5); }
-        .problem-row.solved .strikethrough-line { width: 100%; }
-
-        /* Checkbox */
-        .checkbox-wrapper { width: 24px; height: 24px; border-radius: 6px; border: 2px solid #52525b; background: rgba(0,0,0,0.3); display: grid; place-items: center; cursor: pointer; transition: all 0.2s; overflow: hidden; }
-        .checkbox-wrapper:hover { border-color: #71717a; }
-        .problem-row.solved .checkbox-wrapper { background: #10b981; border-color: #10b981; box-shadow: 0 0 15px rgba(16, 185, 129, 0.4); }
-        .checkmark-path { stroke-dasharray: 20; stroke-dashoffset: 20; transition: stroke-dashoffset 0.3s cubic-bezier(0.65, 0, 0.45, 1); }
-        .problem-row.solved .checkmark-path { stroke-dashoffset: 0; }
-
-        @keyframes shimmer { 100% { transform: translateX(100%); } }
-        @keyframes fadeInUp { to { opacity: 1; transform: translateY(0); } }
+        /* --- TIMELINE CONTAINER --- */
+        /* Increased width to allow for a wider "river" meander */
+        .timeline-wrapper { position: relative; max-width: 1000px; margin: 0 auto; padding: 100px 20px 200px; }
         
-        .badge { font-size: 10px; font-family: 'JetBrains Mono', monospace; padding: 4px 8px; border-radius: 4px; font-weight: 700; text-transform: uppercase; }
-        .badge-Easy { background: rgba(52, 211, 153, 0.1); color: #34d399; }
-        .badge-Medium { background: rgba(251, 191, 36, 0.1); color: #fbbf24; }
-        .badge-Hard { background: rgba(248, 113, 113, 0.1); color: #f87171; }
+        /* SVG Layer */
+        #path-svg {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 0; pointer-events: none; overflow: visible;
+        }
+        
+        .roadmap-path {
+            fill: none;
+            stroke: rgba(255, 255, 255, 0.08);
+            stroke-width: 4px; /* Thicker line */
+            stroke-linecap: round;
+        }
+        
+        .roadmap-path-active {
+            fill: none;
+            stroke: #10b981; 
+            stroke-width: 4px;
+            stroke-linecap: round;
+            filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.5));
+            transition: stroke-dashoffset 1s ease-out;
+        }
 
-        .filter-btn { opacity: 0.5; transition: 0.2s; }
-        .filter-btn:hover { opacity: 0.8; }
-        .filter-btn.active { opacity: 1; color: var(--primary); font-weight: 600; }
+        /* --- ITEMS --- */
+        .timeline-item {
+            position: relative; z-index: 10;
+            width: 35%; /* Smaller text width to create a HUGE gap in middle */
+            margin-bottom: 150px; /* Massive vertical spacing for smooth curves */
+            transition: opacity 0.3s;
+        }
+        
+        /* TEXT ALIGNMENT & DOT POSITIONING */
+        /* We push the dots FAR out into the center gap to create the wave amplitude */
+        
+        .timeline-item.left { margin-right: auto; text-align: right; }
+        /* Dot is 40% to the right of the text box (pushes into center) */
+        .timeline-item.left .connector-dot { right: -40%; } 
+
+        .timeline-item.right { margin-left: auto; text-align: left; }
+        /* Dot is 40% to the left of the text box */
+        .timeline-item.right .connector-dot { left: -40%; }
+
+        /* Mobile: Collapse to straight line */
+        @media (max-width: 768px) {
+            .timeline-item { width: 90%; margin: 0 auto 80px auto !important; text-align: center !important; }
+            .timeline-item .connector-dot { left: 50% !important; right: auto !important; top: -40px !important; transform: translateX(-50%) !important; }
+            .timeline-wrapper { padding-top: 50px; }
+        }
+
+        /* --- THE DOTS (Rings) --- */
+        .connector-dot {
+            position: absolute; top: 50%; 
+            background: #030303; 
+            border-radius: 50%; 
+            transform: translateY(-50%);
+            z-index: 20; 
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 0 20px rgba(0,0,0,1);
+        }
+
+        /* Size & Colors */
+        .dot-Easy { width: 18px; height: 18px; border: 3px solid #34d399; }
+        .dot-Medium { width: 28px; height: 28px; border: 3px solid #fbbf24; }
+        .dot-Hard { width: 38px; height: 38px; border: 3px solid #f87171; }
+
+        /* Interaction */
+        .timeline-item:hover .connector-dot { transform: translateY(-50%) scale(1.2); box-shadow: 0 0 25px rgba(255,255,255,0.15); }
+        .timeline-item:hover .problem-title { color: #fff; }
+
+        /* Solved State */
+        .timeline-item.solved .dot-Easy { background: #34d399; box-shadow: 0 0 20px #34d399; }
+        .timeline-item.solved .dot-Medium { background: #fbbf24; box-shadow: 0 0 20px #fbbf24; }
+        .timeline-item.solved .dot-Hard { background: #f87171; box-shadow: 0 0 20px #f87171; }
+        
+        .timeline-item.solved .problem-title { color: #6b7280; text-decoration: line-through; }
+        .timeline-item.solved { opacity: 0.5; }
+
+        /* Typography */
+        .problem-title {
+            font-size: 1.5rem; font-weight: 800; color: #e5e7eb;
+            letter-spacing: -0.02em; margin-bottom: 6px;
+        }
+        .problem-meta { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: #9ca3af; }
+        
+        /* Buttons */
+        .btn-minimal {
+            display: inline-block; margin-top: 12px;
+            font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+            padding: 8px 16px; border-radius: 99px;
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #9ca3af; text-decoration: none;
+            background: rgba(255,255,255,0.02);
+            transition: all 0.2s;
+        }
+        .btn-minimal:hover { background: #fff; color: #000; border-color: #fff; }
+        
     </style>
 </head>
-<body class="min-h-screen pb-20">
+<body>
 
-    <!-- HEADER HUD -->
     <div class="glass-hud">
-        <div class="max-w-5xl mx-auto px-6 py-6">
-            <div class="flex justify-between items-center mb-6">
-                <div>
-                    <a href="{{ url_for('index') }}" class="text-xs font-bold text-gray-500 hover:text-white uppercase tracking-widest mb-1 block transition-colors">
-                        &larr; Main Operations
-                    </a>
-                    <h1 class="text-3xl md:text-4xl font-extrabold tracking-tight text-white flex items-center gap-3">
-                        <span class="bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">{{ topic_name }}</span>
-                    </h1>
-                </div>
-                <div class="text-right">
-                    <div class="text-xs text-gray-400 font-mono mb-1">MODULE PROGRESS</div>
-                    <div class="text-3xl font-bold text-indigo-400 font-mono tracking-tighter" id="total-progress">0%</div>
-                </div>
+        <div class="max-w-5xl mx-auto px-6 py-5 flex justify-between items-center">
+            <div>
+                <a href="{{ url_for('index') }}" class="text-[10px] font-bold text-gray-500 hover:text-white uppercase tracking-widest transition-colors">&larr; Grid</a>
+                <h1 class="text-2xl font-bold text-white mt-1">{{ topic_name }}</h1>
             </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div>
-                    <div class="flex justify-between text-xs font-semibold mb-2 text-green-400"><span>EASY</span><span id="easy-text">0/0</span></div>
-                    <div class="liquid-bar-bg"><div id="easy-bar" class="liquid-bar-fill bg-green-500" style="width: 0%"></div></div>
-                </div>
-                <div>
-                    <div class="flex justify-between text-xs font-semibold mb-2 text-yellow-400"><span>MEDIUM</span><span id="medium-text">0/0</span></div>
-                    <div class="liquid-bar-bg"><div id="medium-bar" class="liquid-bar-fill bg-yellow-500" style="width: 0%"></div></div>
-                </div>
-                <div>
-                    <div class="flex justify-between text-xs font-semibold mb-2 text-red-400"><span>HARD</span><span id="hard-text">0/0</span></div>
-                    <div class="liquid-bar-bg"><div id="hard-bar" class="liquid-bar-fill bg-red-500" style="width: 0%"></div></div>
-                </div>
+            <div class="text-right">
+                <div class="text-[10px] text-gray-500 font-mono mb-1">SYNC</div>
+                <div class="text-2xl font-bold text-emerald-500 font-mono" id="progress-pct">0%</div>
             </div>
         </div>
     </div>
 
-    <!-- CONTROLS -->
-    <div class="max-w-5xl mx-auto px-6 mt-8 mb-6 flex justify-between items-end border-b border-gray-800 pb-4">
-        <div class="flex gap-6 text-sm">
-            <button class="filter-btn active" onclick="filterList('all', this)">ALL MISSIONS</button>
-            <button class="filter-btn" onclick="filterList('active', this)">ACTIVE</button>
-            <button class="filter-btn" onclick="filterList('completed', this)">COMPLETED</button>
-        </div>
-        <div class="text-xs text-gray-600 font-mono">SYNC: <span class="text-green-500">ONLINE</span></div>
-    </div>
+    <div class="timeline-wrapper">
+        <svg id="path-svg">
+            <path id="bg-path" class="roadmap-path" d="" />
+            <path id="active-path" class="roadmap-path-active" d="" />
+        </svg>
 
-    <!-- LIST -->
-    <div id="problem-container" class="max-w-5xl mx-auto px-6 space-y-3"></div>
+        <div id="items-container"></div>
+    </div>
 
     <script>
         const allProblems = {{ problems | tojson | safe }};
-        let solvedIds = new Set();
-        // 1. Get the Token from the meta tag
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-
-        document.addEventListener("mousemove", (e) => {
-            const cards = document.querySelectorAll(".problem-row");
-            cards.forEach(card => {
-                const rect = card.getBoundingClientRect();
-                card.style.setProperty("--mouse-x", `${e.clientX - rect.left}px`);
-                card.style.setProperty("--mouse-y", `${e.clientY - rect.top}px`);
-            });
-        });
+        let solvedIds = new Set();
 
         async function init() {
             try {
@@ -127,109 +153,155 @@
                     solvedIds = new Set(Object.keys(data));
                 }
             } catch(e) {}
+            
             render();
-            updateStats();
+            setTimeout(() => { drawPath(); updateProgress(); }, 150);
+            window.addEventListener('resize', drawPath);
         }
 
-        function render(filterType = 'all') {
-            const container = document.getElementById('problem-container');
+        function render() {
+            const container = document.getElementById('items-container');
             container.innerHTML = '';
 
             allProblems.forEach((p, index) => {
                 const isSolved = solvedIds.has(String(p.ID));
-                if (filterType === 'active' && isSolved) return;
-                if (filterType === 'completed' && !isSolved) return;
-
-                const row = document.createElement('div');
-                row.className = `problem-row flex items-center justify-between group ${isSolved ? 'solved' : ''}`;
-                row.style.animation = `fadeInUp 0.4s ease forwards ${index * 0.05}s`;
-                row.style.opacity = '0'; row.style.transform = 'translateY(10px)';
-
-                row.innerHTML = `
-                    <div class="flex items-center gap-5 z-10 w-full">
-                        <div class="checkbox-wrapper" onclick="handleCheck(${p.ID}, this, event)">
-                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                                <path class="checkmark-path" d="M11.6666 3.5L5.24992 9.91667L2.33325 7" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
+                const side = index % 2 === 0 ? 'left' : 'right';
+                
+                const div = document.createElement('div');
+                div.className = `timeline-item ${side} ${isSolved ? 'solved' : ''}`;
+                
+                div.innerHTML = `
+                    <div class="connector-dot dot-${p.Difficulty}" id="dot-${index}"></div>
+                    
+                    <div>
+                        <h3 class="problem-title">${p.Title}</h3>
+                        <div class="problem-meta">
+                            <span class="${isSolved?'text-gray-600':(p.Difficulty==='Easy'?'text-emerald-400':(p.Difficulty==='Medium'?'text-yellow-400':'text-red-400'))}">${p.Difficulty}</span>
+                            <span class="mx-2 opacity-20">/</span>
+                            ${p.AcceptanceRate}% ACC
                         </div>
-                        <div class="flex-1">
-                            <div class="flex items-baseline justify-between">
-                                <a href="${p.Link}" target="_blank" class="problem-title text-lg font-medium text-gray-100 group-hover:text-indigo-300 transition-colors">
-                                    ${p.Title}
-                                    <span class="strikethrough-line"></span>
-                                </a>
-                                <span class="text-xs font-mono text-gray-600">#${p.ID}</span>
-                            </div>
-                            <div class="flex items-center gap-3 mt-2">
-                                <span class="badge badge-${p.Difficulty}">${p.Difficulty}</span>
-                                <span class="text-xs text-gray-500 font-medium">Acc: ${p.AcceptanceRate}%</span>
-                                <span class="text-xs text-gray-600">•</span>
-                                <span class="text-xs text-gray-500 font-medium">${p.adjusted_like_ratio.toFixed(0)}% Likes</span>
-                            </div>
+                        
+                        <div class="flex gap-3 ${side === 'left' ? 'justify-end' : 'justify-start'}">
+                            <a href="${p.Link}" target="_blank" class="btn-minimal">Open</a>
+                            <button onclick="toggleSolve(${p.ID}, ${index}, event)" class="btn-minimal">
+                                ${isSolved ? 'Undo' : 'Complete'}
+                            </button>
                         </div>
                     </div>
                 `;
-                container.appendChild(row);
+                container.appendChild(div);
             });
         }
 
-        async function handleCheck(id, btn, event) {
+        // --- ENHANCED CURVE ALGORITHM ---
+        function drawPath() {
+            const svg = document.getElementById('path-svg');
+            const bgPath = document.getElementById('bg-path');
+            const activePath = document.getElementById('active-path');
+            const wrapper = document.querySelector('.timeline-wrapper');
+            const dots = document.querySelectorAll('.connector-dot');
+            
+            if (dots.length === 0) return;
+
+            const wrapperRect = wrapper.getBoundingClientRect();
+            svg.style.height = (wrapper.scrollHeight + 200) + 'px';
+
+            const startX = wrapperRect.width / 2;
+            const startY = 0;
+
+            let d = `M ${startX} ${startY}`;
+            let lastX = startX;
+            let lastY = startY;
+
+            dots.forEach((dot, i) => {
+                const rect = dot.getBoundingClientRect();
+                const containerRect = wrapper.getBoundingClientRect();
+                
+                const currentX = (rect.left - containerRect.left) + (rect.width / 2);
+                const currentY = (rect.top - containerRect.top) + (rect.height / 2);
+
+                const distY = currentY - lastY;
+                
+                // --- MAGIC FOR CIRCULAR CURVES ---
+                // For a visually "circular" arc between two points, the control handle length
+                // should be roughly 0.5 to 0.6 times the vertical distance.
+                // Since we increased horizontal spacing, we need looser tension.
+                const tension = distY * 0.5; 
+                
+                d += ` C ${lastX} ${lastY + tension}, ${currentX} ${currentY - tension}, ${currentX} ${currentY}`;
+
+                lastX = currentX;
+                lastY = currentY;
+            });
+
+            // Gentle trail off
+            d += ` C ${lastX} ${lastY + 150}, ${startX} ${lastY + 250}, ${startX} ${lastY + 350}`;
+
+            bgPath.setAttribute('d', d);
+            activePath.setAttribute('d', d);
+            updatePathProgress(activePath);
+        }
+
+        function updatePathProgress(pathEl) {
+            const totalLen = pathEl.getTotalLength();
+            pathEl.style.strokeDasharray = totalLen;
+            
+            let lastSolvedIndex = -1;
+            document.querySelectorAll('.timeline-item').forEach((item, idx) => {
+                if (item.classList.contains('solved')) lastSolvedIndex = idx;
+            });
+
+            if (lastSolvedIndex === -1) {
+                pathEl.style.strokeDashoffset = totalLen;
+            } else {
+                const dots = document.querySelectorAll('.connector-dot');
+                if (dots[lastSolvedIndex]) {
+                     const dot = dots[lastSolvedIndex];
+                     const wrapper = document.querySelector('.timeline-wrapper');
+                     const relativeY = dot.getBoundingClientRect().top - wrapper.getBoundingClientRect().top;
+                     const ratio = relativeY / wrapper.scrollHeight;
+                     // Fill past the dot to next curve start
+                     const offset = totalLen * (1 - ratio) - 100; 
+                     pathEl.style.strokeDashoffset = Math.max(0, offset);
+                }
+            }
+        }
+
+        async function toggleSolve(id, index, event) {
             const sid = String(id);
             const isSolving = !solvedIds.has(sid);
-            const row = btn.closest('.problem-row');
-
+            const item = document.querySelectorAll('.timeline-item')[index];
+            const btn = event.target;
+            
             if (isSolving) {
                 solvedIds.add(sid);
-                row.classList.add('solved');
-                triggerConfetti(event.clientX, event.clientY);
+                item.classList.add('solved');
+                btn.innerText = "Undo";
+                const dot = item.querySelector('.connector-dot').getBoundingClientRect();
+                confetti({
+                    particleCount: 50, spread: 80, gravity: 0.8,
+                    origin: { x: (dot.left + dot.width/2)/window.innerWidth, y: (dot.top + dot.height/2)/window.innerHeight },
+                    colors: ['#34d399', '#fbbf24', '#f87171']
+                });
             } else {
                 solvedIds.delete(sid);
-                row.classList.remove('solved');
+                item.classList.remove('solved');
+                btn.innerText = "Complete";
             }
-            updateStats();
+            
+            updateProgress();
+            drawPath();
 
-            try {
-                await fetch('/api/progress/toggle', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': csrfToken // <--- CRITICAL FIX
-                    },
-                    body: JSON.stringify({problem_id: id, solved: isSolving})
-                });
-            } catch(e) { console.error("Sync failed"); }
-        }
-
-        function triggerConfetti(x, y) {
-            const xNorm = x / window.innerWidth;
-            const yNorm = y / window.innerHeight;
-            confetti({ particleCount: 60, spread: 70, origin: { x: xNorm, y: yNorm }, colors: ['#6366f1', '#10b981', '#ffffff'], disableForReducedMotion: true, gravity: 1.2, scalar: 0.8, ticks: 100 });
-        }
-
-        function updateStats() {
-            const counts = { Easy: {total:0, done:0}, Medium: {total:0, done:0}, Hard: {total:0, done:0} };
-            let totalDone = 0;
-            allProblems.forEach(p => {
-                counts[p.Difficulty].total++;
-                if (solvedIds.has(String(p.ID))) {
-                    counts[p.Difficulty].done++;
-                    totalDone++;
-                }
+            await fetch('/api/progress/toggle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                body: JSON.stringify({problem_id: id, solved: isSolving})
             });
-            document.getElementById('total-progress').innerText = `${Math.round((totalDone / allProblems.length) * 100) || 0}%`;
-            updateBar('easy', counts.Easy); updateBar('medium', counts.Medium); updateBar('hard', counts.Hard);
         }
 
-        function updateBar(type, data) {
-            const pct = data.total === 0 ? 0 : Math.round((data.done / data.total) * 100);
-            document.getElementById(`${type}-bar`).style.width = `${pct}%`;
-            document.getElementById(`${type}-text`).innerText = `${data.done}/${data.total}`;
-        }
-
-        function filterList(type, btn) {
-            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            render(type);
+        function updateProgress() {
+            const pct = Math.round((solvedIds.size / allProblems.length) * 100) || 0;
+            document.getElementById('progress-pct').innerText = `${pct}%`;
         }
 
         init();
