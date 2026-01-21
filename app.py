@@ -22,12 +22,10 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev_key_change_in_prod_
 database_url = os.environ.get('DATABASE_URL')
 
 if database_url:
-    # Render uses 'postgres://' but SQLAlchemy needs 'postgresql://'
     if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 else:
-    # Fallback to SQLite
     RENDER_INSTANCE_DIR = os.environ.get('RENDER_INSTANCE_DIR', os.path.join(os.path.abspath(os.path.dirname(__file__)), 'instance'))
     if not os.path.exists(RENDER_INSTANCE_DIR):
         os.makedirs(RENDER_INSTANCE_DIR)
@@ -53,7 +51,6 @@ migrate = Migrate(app, db)
 server_session = Session(app)
 csrf = CSRFProtect(app)
 
-# Rate Limiter
 limiter = Limiter(
     get_remote_address,
     app=app,
@@ -87,7 +84,7 @@ class Note(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     problem_id = db.Column(db.Integer, nullable=False)
-    content = db.Column(db.Text, nullable=True) # Markdown content
+    content = db.Column(db.Text, nullable=True)
     updated_at = db.Column(db.DateTime, nullable=False, default=db.func.now(), onupdate=db.func.now())
     __table_args__ = (db.UniqueConstraint('user_id', 'problem_id', name='_user_problem_note_uc'),)
 
@@ -132,6 +129,16 @@ SLUG_TO_NAME_MAP = {
     "backtracking": "Backtracking", "intervals": "Intervals", "greedy": "Greedy",
     "advanced-graphs": "Advanced Graphs", "graphs": "Graphs", "1-d-dp": "1-D DP",
     "2-d-dp": "2-D DP", "bit-manipulation": "Bit Manipulation", "math-geometry": "Math & Geometry"
+}
+
+# Groupings for Radar Chart
+RADAR_GROUPS = {
+    "Linear": ["arrays-hashing", "stack", "two-pointers", "sliding-window", "linked-list"],
+    "Trees": ["trees", "tries", "heap-priority-queue"],
+    "Graphs": ["graphs", "advanced-graphs", "backtracking"],
+    "DP": ["1-d-dp", "2-d-dp"],
+    "Search": ["binary-search", "greedy", "intervals"],
+    "Logic": ["math-geometry", "bit-manipulation"]
 }
 
 CLASSIC_PROBLEM_IDS = {1,2,3,5,11,15,17,19,20,21,22,23,33,42,46,49,53,56,57,70,75,76,78,79,98,102,103,104,105,121,125,128,133,139,141,146,152,198,199,200,206,207,208,215,235,236,238,239,295,297,322,416,560,621,704,973,1448}
@@ -264,11 +271,14 @@ def logout():
 def index():
     if DATA.empty: return "Data Error: Run helper.py", 500
     
-    solved = SolvedProblem.query.filter_by(user_id=current_user.id).order_by(SolvedProblem.solved_at.asc()).all()
+    # 1. Fetch User Data
+    solved_entries = SolvedProblem.query.filter_by(user_id=current_user.id).order_by(SolvedProblem.solved_at.asc()).all()
+    solved_ids = {s.problem_id for s in solved_entries}
     
+    # 2. Heatmap & Streak Logic
     activity_map = {}
     distinct_dates = set()
-    for s in solved:
+    for s in solved_entries:
         d_str = s.solved_at.strftime('%Y-%m-%d')
         activity_map[d_str] = activity_map.get(d_str, 0) + 1
         distinct_dates.add(s.solved_at.date())
@@ -284,7 +294,6 @@ def index():
             for i in range(len(sorted_dates)-1, 0, -1):
                 if (sorted_dates[i] - sorted_dates[i-1]).days == 1: current_streak += 1
                 else: break
-        
         temp_streak = 1
         for i in range(1, len(sorted_dates)):
             if (sorted_dates[i] - sorted_dates[i-1]).days == 1: temp_streak += 1
@@ -293,14 +302,36 @@ def index():
                 temp_streak = 1
         longest_streak = max(longest_streak, temp_streak)
 
+    # 3. Topic Map & Radar Data Calculation
     topic_problems_map = {slug: [p['ID'] for p in get_curated_problems_for_topic(slug)] for slug in SLUG_TO_NAME_MAP.keys()}
     
+    # Calculate Radar Stats
+    radar_labels = []
+    radar_data = []
+    
+    # Groups defined in RADAR_GROUPS constant
+    for group_name, slug_list in RADAR_GROUPS.items():
+        total_in_group = 0
+        solved_in_group = 0
+        
+        for slug in slug_list:
+            if slug in topic_problems_map:
+                p_ids = topic_problems_map[slug]
+                total_in_group += len(p_ids)
+                solved_in_group += sum(1 for pid in p_ids if pid in solved_ids)
+        
+        pct = (solved_in_group / total_in_group * 100) if total_in_group > 0 else 0
+        radar_labels.append(group_name)
+        radar_data.append(round(pct, 1))
+
     return render_template('index.html', 
                          topic_problems_map=json.dumps(topic_problems_map),
                          activity_map=json.dumps(activity_map),
                          current_streak=current_streak,
                          longest_streak=longest_streak,
-                         total_solved=len(solved))
+                         total_solved=len(solved_entries),
+                         radar_labels=json.dumps(radar_labels),
+                         radar_data=json.dumps(radar_data))
 
 @app.route('/topic/<topic_slug>')
 @login_required
@@ -341,14 +372,12 @@ def save_note():
     data = request.get_json()
     problem_id = data.get('problem_id')
     content = data.get('content')
-    
     note = Note.query.filter_by(user_id=current_user.id, problem_id=problem_id).first()
     if note:
         note.content = content
     else:
         new_note = Note(user_id=current_user.id, problem_id=problem_id, content=content)
         db.session.add(new_note)
-    
     db.session.commit()
     return jsonify({'status': 'success'})
 
