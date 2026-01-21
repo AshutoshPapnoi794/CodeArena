@@ -231,8 +231,12 @@ def login():
         user = User.query.filter_by(username=username).first()
         
         if user and bcrypt.check_password_hash(user.password, password):
+            # CLEAR OLD SESSIONS BEFORE LOGGING IN
             session.clear() 
-            login_user(user, remember=True)
+            
+            # LOGIN WITHOUT "REMEMBER ME" (This prevents the loop)
+            login_user(user, remember=False) 
+            
             return redirect(request.args.get('next') or url_for('index'))
         else:
             flash('Invalid credentials.', 'error')
@@ -277,16 +281,25 @@ def signup():
 
 @app.route('/logout')
 def logout():
+    # 1. Server-Side Logout
     logout_user()
     session.clear()
     
-    # Create the redirect response
-    resp = redirect(url_for('login'))
+    # 2. Client-Side Cookie Destruction
+    # We return a specific response to force the browser to drop the cookies
+    response = redirect(url_for('login'))
     
-    # Forcefully expire the session cookie
-    resp.set_cookie('session', '', expires=0)
+    # Delete the Session Cookie
+    response.set_cookie('session', '', expires=0, path='/')
+    # Delete the Remember Me Cookie (Just in case it exists)
+    response.set_cookie('remember_token', '', expires=0, path='/')
     
-    return resp
+    # Disable Caching so clicking "Back" doesn't show the logged-in page
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    
+    return response
 
 @app.errorhandler(429)
 def ratelimit_handler(e):
