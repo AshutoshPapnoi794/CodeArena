@@ -279,7 +279,14 @@ def signup():
 def logout():
     logout_user()
     session.clear()
-    return redirect(url_for('login'))
+    
+    # Create the redirect response
+    resp = redirect(url_for('login'))
+    
+    # Forcefully expire the session cookie
+    resp.set_cookie('session', '', expires=0)
+    
+    return resp
 
 @app.errorhandler(429)
 def ratelimit_handler(e):
