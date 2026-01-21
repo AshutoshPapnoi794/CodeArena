@@ -18,25 +18,17 @@ import re
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev_key_change_in_prod_987654321')
 
-# --- INITIALIZE EXTENSIONS ---
-db = SQLAlchemy(app)
-bcrypt = Bcrypt(app)
-migrate = Migrate(app, db)
-server_session = Session(app)
-csrf = CSRFProtect(app)
-
-
-# 1. DATABASE CONFIG
-# Check for Render's Database URL
+# --- 1. DATABASE CONFIG (Fixed Order for Render) ---
+# We must define where the DB is BEFORE initializing SQLAlchemy
 database_url = os.environ.get('DATABASE_URL')
 
 if database_url:
-    # Render provides 'postgres://' but SQLAlchemy needs 'postgresql://'
+    # Render uses 'postgres://' but SQLAlchemy needs 'postgresql://'
     if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 else:
-    # Fallback to SQLite for local testing
+    # Fallback to SQLite for local development
     RENDER_INSTANCE_DIR = os.environ.get('RENDER_INSTANCE_DIR', os.path.join(os.path.abspath(os.path.dirname(__file__)), 'instance'))
     if not os.path.exists(RENDER_INSTANCE_DIR):
         os.makedirs(RENDER_INSTANCE_DIR)
@@ -44,27 +36,36 @@ else:
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# 2. SESSION SECURITY
-app.config['SESSION_TYPE'] = 'sqlalchemy'  # Changed from 'filesystem'
-app.config['SESSION_SQLALCHEMY'] = db      # Use the new database for sessions
+# --- 2. SESSION SECURITY (Database Backed) ---
+# Use the database for sessions so users don't get logged out on restart
+app.config['SESSION_TYPE'] = 'sqlalchemy'
 app.config['SESSION_PERMANENT'] = True
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 app.config['SESSION_USE_SIGNER'] = True
 app.config['SESSION_KEY_PREFIX'] = 'dsa_auth:'
 # Security headers
-app.config['SESSION_COOKIE_SECURE'] = True # Set True for https (Render uses https)
+app.config['SESSION_COOKIE_SECURE'] = True # Set to True for HTTPS (Render)
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
+# --- INITIALIZE EXTENSIONS ---
+db = SQLAlchemy(app)
 
-# *** ADD THIS BLOCK HERE ***
+# Link session to the initialized DB
+app.config['SESSION_SQLALCHEMY'] = db 
+
+bcrypt = Bcrypt(app)
+migrate = Migrate(app, db)
+server_session = Session(app)
+csrf = CSRFProtect(app)
+
+# --- ENSURE TABLES EXIST ON RENDER ---
 with app.app_context():
     try:
         db.create_all()
         print("✅ Database tables created successfully.")
     except Exception as e:
         print(f"❌ Error creating tables: {e}")
-# ***************************
 
 # Rate Limiter
 limiter = Limiter(
@@ -154,7 +155,7 @@ def load_data():
     global DATA
     try:
         if not os.path.exists('leetcode_with_submissions.csv'):
-            print("❌ CSV File not found. Run helper.py first.")
+            print("❌ CSV File not found. Ensure it is committed to the repo.")
             return
 
         df = pd.read_csv('leetcode_with_submissions.csv')
@@ -290,7 +291,7 @@ def ratelimit_handler(e):
 @app.route('/')
 @login_required
 def index():
-    if DATA.empty: return "Data Error: Run helper.py", 500
+    if DATA.empty: return "Data Error: Run helper.py first or ensure CSV is in repo.", 500
     topic_problems_map = {slug: [p['ID'] for p in get_curated_problems_for_topic(slug)] for slug in SLUG_TO_NAME_MAP.keys()}
     return render_template('index.html', topic_problems_map=json.dumps(topic_problems_map))
 
@@ -322,4 +323,6 @@ def toggle_progress():
     return jsonify({'status': 'success'})
 
 if __name__ == '__main__':
+    # This block usually doesn't run on Render (Gunicorn runs the app object directly)
+    # That is why we added the db.create_all() block above.
     app.run(debug=True)
