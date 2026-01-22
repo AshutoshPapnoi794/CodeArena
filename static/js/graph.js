@@ -2,15 +2,13 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // --- 1. CONFIGURATION ---
     const config = {
-        nodeWidth: 200,
-        nodeHeight: 60,
+        nodeWidth: 220,
+        nodeHeight: 64,
+        cornerSize: 10,
         colors: {
-            locked: '#18181b',       
-            lockedStroke: '#27272a', 
-            active: '#1e1b4b',       
-            activeStroke: '#6366f1', 
-            mastered: '#064e3b',     
-            masteredStroke: '#10b981' 
+            locked: { stroke: '#27272a', fill: '#09090b', text: '#52525b' },
+            unlocked: { stroke: '#6366f1', fill: '#1e1b4b', text: '#e4e4e7', glow: '#6366f1' },
+            mastered: { stroke: '#10b981', fill: '#064e3b', text: '#ecfdf5', glow: '#10b981' }
         }
     };
 
@@ -69,113 +67,174 @@ document.addEventListener('DOMContentLoaded', () => {
     
     const svg = d3.select("#graph-container").append("svg")
         .attr("width", width).attr("height", height)
-        .style("cursor", "grab");
+        .style("cursor", "grab")
+        .attr("viewBox", [0, 0, width, height]);
 
+    // --- DEFS (Advanced Filters & Patterns) ---
     const defs = svg.append("defs");
     
-    // Filters & Gradients
-    const glow = defs.append("filter").attr("id", "blue-glow");
-    glow.append("feGaussianBlur").attr("stdDeviation", "4").attr("result", "coloredBlur");
-    const feMerge = glow.append("feMerge");
+    // 1. Grid Pattern for Background (Subtle Tech feel)
+    const gridPattern = defs.append("pattern")
+        .attr("id", "tech-grid")
+        .attr("width", 50).attr("height", 50)
+        .attr("patternUnits", "userSpaceOnUse");
+    gridPattern.append("path")
+        .attr("d", "M 50 0 L 0 0 0 50")
+        .attr("fill", "none")
+        .attr("stroke", "rgba(255,255,255,0.03)")
+        .attr("stroke-width", 1);
+
+    // 2. Diagonal Stripe for Locked Nodes
+    const stripePattern = defs.append("pattern")
+        .attr("id", "diagonal-stripe")
+        .attr("width", 10).attr("height", 10)
+        .attr("patternUnits", "userSpaceOnUse")
+        .attr("patternTransform", "rotate(45)");
+    stripePattern.append("rect").attr("width", 5).attr("height", 10).attr("fill", "#000");
+    stripePattern.append("rect").attr("x", 5).attr("width", 5).attr("height", 10).attr("fill", "#333");
+
+    // 3. Link Gradient (Animated feel via color)
+    const linkGrad = defs.append("linearGradient")
+        .attr("id", "link-gradient")
+        .attr("gradientUnits", "userSpaceOnUse");
+    linkGrad.append("stop").attr("offset", "0%").attr("stop-color", "#6366f1").attr("stop-opacity", 0.1);
+    linkGrad.append("stop").attr("offset", "50%").attr("stop-color", "#818cf8");
+    linkGrad.append("stop").attr("offset", "100%").attr("stop-color", "#34d399").attr("stop-opacity", 0.1);
+
+    // 4. Glow Filter
+    const filter = defs.append("filter").attr("id", "glow");
+    filter.append("feGaussianBlur").attr("stdDeviation", "2.5").attr("result", "coloredBlur");
+    const feMerge = filter.append("feMerge");
     feMerge.append("feMergeNode").attr("in", "coloredBlur");
     feMerge.append("feMergeNode").attr("in", "SourceGraphic");
 
-    const linkGrad = defs.append("linearGradient").attr("id", "link-gradient").attr("gradientUnits", "userSpaceOnUse");
-    linkGrad.append("stop").attr("offset", "0%").attr("stop-color", "#6366f1");
-    linkGrad.append("stop").attr("offset", "100%").attr("stop-color", "#34d399");
+    // --- BACKGROUND GRID RENDER ---
+    const bgGroup = svg.append("g").attr("class", "background-layer");
+    bgGroup.append("rect")
+        .attr("x", -5000).attr("y", -5000)
+        .attr("width", 10000).attr("height", 10000)
+        .attr("fill", "url(#tech-grid)");
 
-    const lockPath = "M12 17a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm6-9h-1V6a5 5 0 0 0-10 0v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2zM9 6a3 3 0 1 1 6 0v2H9V6z";
-
-    // --- CSS INJECTION ---
-    const style = document.createElement('style');
-    style.innerHTML = `
-        @keyframes flow { from { stroke-dashoffset: 24; } to { stroke-dashoffset: 0; } }
-        .link { fill: none; stroke-linecap: round; transition: all 0.4s; }
-        .link-inactive { stroke: #3f3f46; stroke-width: 1.5px; opacity: 0.3; }
-        .link-active { 
-            stroke: url(#link-gradient); 
-            stroke-width: 2.5px; 
-            stroke-dasharray: 8, 4; 
-            animation: flow 1s linear infinite; 
-            opacity: 0.8; 
-            filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.4));
-        }
-        .node-group { transition: opacity 0.3s; }
-        .dimmed { opacity: 0.15; filter: grayscale(100%); }
-    `;
-    document.head.appendChild(style);
-
-    const g = svg.append("g");
+    const mainGroup = svg.append("g");
     const tooltip = document.querySelector(".modern-tooltip");
 
-    // --- 4. DRAWING ---
+    // --- 4. DRAWING UTILS ---
     const linkGen = d3.linkVertical().x(d => d[0]).y(d => d[1]);
 
-    function generatePath(d) {
-        return linkGen({
-            source: [d.source.x, d.source.y + config.nodeHeight/2],
-            target: [d.target.x, d.target.y - config.nodeHeight/2]
-        });
+    // Generate "Tech Card" Path with cutout corners
+    function getCardPath(w, h, r) {
+        // Top Left, Top Right, Bottom Right, Bottom Left
+        return `
+            M ${r},0 
+            L ${w-r},0 L ${w},${r} 
+            L ${w},${h-r} L ${w-r},${h} 
+            L ${r},${h} L 0,${h-r} 
+            L 0,${r} Z
+        `;
     }
 
-    const link = g.append("g").selectAll("path")
-        .data(links).join("path")
-        .attr("d", generatePath)
-        .attr("class", "link link-inactive");
+    // Generate "Corner Brackets" Path
+    function getCornerPath(w, h, len) {
+        return `
+            M 0,${len} L 0,0 L ${len},0 
+            M ${w-len},0 L ${w},0 L ${w},${len}
+            M ${w},${h-len} L ${w},${h} L ${w-len},${h}
+            M ${len},${h} L 0,${h} L 0,${h-len}
+        `;
+    }
 
-    const node = g.append("g").selectAll("g")
+    // --- 5. RENDER LINKS ---
+    // Layer 1: Base dark lines
+    mainGroup.append("g").selectAll("path")
+        .data(links).join("path")
+        .attr("class", "link-base")
+        .attr("d", d => linkGen({
+            source: [d.source.x, d.source.y + config.nodeHeight/2],
+            target: [d.target.x, d.target.y - config.nodeHeight/2]
+        }));
+
+    // Layer 2: Active Gradient Path (Revealed via CSS/JS)
+    const activeLinks = mainGroup.append("g").selectAll("path")
+        .data(links).join("path")
+        .attr("class", "link-active-path")
+        .attr("id", d => `link-${d.source.id}-${d.target.id}`)
+        .attr("d", d => linkGen({
+            source: [d.source.x, d.source.y + config.nodeHeight/2],
+            target: [d.target.x, d.target.y - config.nodeHeight/2]
+        }))
+        .attr("opacity", 0); // Hidden by default
+
+    // Layer 3: Data Particles (The flow animation)
+    const particles = mainGroup.append("g").selectAll("path")
+        .data(links).join("path")
+        .attr("class", "link-particle")
+        .attr("id", d => `part-${d.source.id}-${d.target.id}`)
+        .attr("d", d => linkGen({
+            source: [d.source.x, d.source.y + config.nodeHeight/2],
+            target: [d.target.x, d.target.y - config.nodeHeight/2]
+        }))
+        .attr("opacity", 0);
+
+    // --- 6. RENDER NODES ---
+    const nodeGroup = mainGroup.append("g").selectAll("g")
         .data(nodes).join("g")
-        .attr("class", "node-group")
-        .attr("transform", d => `translate(${d.x},${d.y})`)
-        .style("cursor", "pointer")
+        .attr("class", "node-container")
+        .attr("transform", d => `translate(${d.x - config.nodeWidth/2},${d.y - config.nodeHeight/2})`)
         .on("click", (e, d) => {
             if (isUnlocked(d.id)) window.location.href = `/topic/${slugMap[d.id]}`;
         });
 
-    // Node Background
-    node.append("rect")
-        .attr("x", -config.nodeWidth/2)
-        .attr("y", -config.nodeHeight/2)
-        .attr("width", config.nodeWidth)
-        .attr("height", config.nodeHeight)
-        .attr("rx", 10)
-        .attr("class", "node-card")
-        .attr("stroke-width", 1.5)
-        .attr("fill", config.colors.locked)
-        .attr("stroke", config.colors.lockedStroke);
+    // A. Glass Background
+    nodeGroup.append("path")
+        .attr("d", getCardPath(config.nodeWidth, config.nodeHeight, config.cornerSize))
+        .attr("class", "node-glass");
 
-    // Progress Bar (Background Fill)
-    node.append("rect")
-        .attr("x", -config.nodeWidth/2)
-        .attr("y", -config.nodeHeight/2)
-        .attr("height", config.nodeHeight)
-        .attr("width", 0) // dynamic
-        .attr("rx", 10)
-        .attr("class", "node-progress")
-        .attr("opacity", 0.15)
-        .attr("fill", "#fff")
-        .attr("clip-path", `inset(0 0 0 0 round 10px)`);
+    // B. Locked Texture Overlay
+    nodeGroup.append("path")
+        .attr("d", getCardPath(config.nodeWidth, config.nodeHeight, config.cornerSize))
+        .attr("class", "locked-pattern node-locked-overlay");
 
-    // Lock Icon
-    node.append("path")
-        .attr("d", lockPath)
-        .attr("transform", `translate(${-config.nodeWidth/2 + 20}, -12) scale(1)`)
-        .attr("fill", "#52525b")
-        .attr("class", "node-icon");
+    // C. Border
+    nodeGroup.append("path")
+        .attr("d", getCardPath(config.nodeWidth, config.nodeHeight, config.cornerSize))
+        .attr("class", "node-border")
+        .attr("stroke", config.colors.locked.stroke);
 
-    // Text
-    node.append("text")
-        .attr("x", 0)
-        .attr("y", 5)
-        .attr("text-anchor", "middle")
-        .attr("font-family", "Inter")
-        .attr("font-size", "14px")
-        .attr("font-weight", "600")
-        .attr("fill", "#71717a")
-        .attr("class", "node-label")
+    // D. Corner Brackets (Tech decoration)
+    nodeGroup.append("path")
+        .attr("d", getCornerPath(config.nodeWidth, config.nodeHeight, 15))
+        .attr("class", "node-corners")
+        .attr("stroke", config.colors.locked.stroke)
+        .attr("opacity", 0.5);
+
+    // E. Text Label
+    nodeGroup.append("text")
+        .attr("x", 20)
+        .attr("y", config.nodeHeight/2 - 2)
+        .attr("class", "node-text")
+        .attr("fill", config.colors.locked.text)
         .text(d => d.name);
 
-    // --- 5. LOGIC & STATE ---
+    // F. Progress/Subtext Label
+    nodeGroup.append("text")
+        .attr("x", 20)
+        .attr("y", config.nodeHeight/2 + 14)
+        .attr("class", "node-subtext")
+        .attr("fill", config.colors.locked.text)
+        .text("LOCKED // ACCESS DENIED");
+
+    // G. Status Icon (Right side)
+    const iconGroup = nodeGroup.append("g")
+        .attr("transform", `translate(${config.nodeWidth - 40}, ${config.nodeHeight/2 - 10})`);
+    
+    // Lock Icon
+    iconGroup.append("path")
+        .attr("class", "icon-lock")
+        .attr("d", "M6 10V7a4 4 0 1 1 8 0v3h1a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h1zm2-3a2 2 0 1 1 4 0v3H8V7z")
+        .attr("fill", "#52525b")
+        .attr("transform", "scale(1.0)");
+
+    // --- 7. LOGIC & ANIMATION LOOP ---
     let solvedMapCache = new Map();
 
     async function fetchProgress() {
@@ -193,7 +252,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const allIds = (topicProblemsMap[slug] || []).map(String);
         if(!allIds.length) return { pct: 0, str: "0/0" };
         const count = allIds.filter(id => solvedMapCache.has(id)).length;
-        return { pct: (count / allIds.length) * 100, str: `${count}/${allIds.length}` };
+        return { pct: (count / allIds.length) * 100, str: `${count} / ${allIds.length}` };
     }
 
     function isUnlocked(nodeId) {
@@ -203,119 +262,156 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateState() {
-        node.each(function(d) {
+        nodeGroup.each(function(d) {
             const unlocked = isUnlocked(d.id);
             const prog = calculateProgress(d.id);
-            const displayPct = unlocked ? prog.pct : 0;
-            const mastered = displayPct === 100;
-
-            const el = d3.select(this);
+            const mastered = prog.pct === 100;
+            
+            const g = d3.select(this);
             const t = d3.transition().duration(600);
+            
+            // Colors
+            let theme = config.colors.locked;
+            if (unlocked) theme = config.colors.unlocked;
+            if (mastered) theme = config.colors.mastered;
 
-            // Determine Colors
-            let stroke = config.colors.lockedStroke;
-            let fill = config.colors.locked;
-            let glowFilter = null;
-            let labelColor = "#71717a";
+            // Update Border & Corners
+            g.select(".node-border").transition(t)
+                .attr("stroke", theme.stroke)
+                .attr("filter", unlocked ? "url(#glow)" : null);
+            
+            g.select(".node-corners").transition(t)
+                .attr("stroke", theme.stroke)
+                .attr("opacity", unlocked ? 1 : 0.3);
 
-            if (unlocked) {
-                fill = config.colors.active;
-                stroke = config.colors.activeStroke;
-                labelColor = "#e4e4e7";
-                glowFilter = "url(#blue-glow)";
-                if (mastered) {
-                    fill = config.colors.mastered;
-                    stroke = config.colors.masteredStroke;
-                }
-            }
+            // Update Backgrounds
+            g.select(".node-glass").transition(t)
+                .attr("fill", unlocked ? "rgba(10, 10, 20, 0.4)" : "rgba(0,0,0,0.8)"); // Clearer glass when unlocked
+            
+            g.select(".node-locked-overlay").transition(t)
+                .attr("opacity", unlocked ? 0 : 0.15);
 
-            el.select(".node-card").transition(t)
-                .attr("stroke", stroke)
-                .attr("fill", fill)
-                .style("filter", glowFilter);
+            // Update Text
+            g.select(".node-text").transition(t).attr("fill", theme.text);
+            g.select(".node-subtext").transition(t)
+                .attr("fill", theme.text)
+                .textTween(function() {
+                    const el = d3.select(this);
+                    if (!unlocked) return () => "LOCKED // ACCESS DENIED";
+                    if (mastered) return () => "STATUS: MASTERED // 100%";
+                    return () => `PROGRESS: ${Math.round(prog.pct)}% // ${prog.str}`;
+                });
 
-            el.select(".node-progress").transition(t)
-                .attr("width", config.nodeWidth * (displayPct / 100))
-                .attr("fill", mastered ? "#34d399" : "#818cf8");
-
-            el.select(".node-icon").transition(t)
-                .attr("opacity", unlocked ? 0 : 1);
-
-            el.select(".node-label").transition(t)
-                .attr("fill", labelColor);
-
-            // Update Link Classes
-            link.filter(l => l.source.id === d.id).attr("class", unlocked ? "link link-active" : "link link-inactive");
+            // Icons
+            g.select(".icon-lock").transition(t).attr("opacity", unlocked ? 0 : 1);
+            
+            // Link Animations (Update visibility based on unlock status)
+            activeLinks.filter(l => l.source.id === d.id)
+                .transition(t)
+                .attr("opacity", unlocked ? 1 : 0);
+                
+            particles.filter(l => l.source.id === d.id)
+                .transition(t)
+                .attr("opacity", unlocked ? 1 : 0);
         });
     }
 
-    // --- 6. INTERACTION (FOCUS MODE) ---
-    
+    // --- 8. LINK FLOW ANIMATION ---
+    // Instead of CSS stroke-dashoffset (which can be jerky with gradient),
+    // we use a D3 timer to smoothly animate the "Particle" dash offset
+    d3.timer((elapsed) => {
+        particles.attr("stroke-dashoffset", -elapsed * 0.1);
+    });
+
+
+    // --- 9. INTERACTION: FOCUS MODE ---
     function setFocus(d, isFocused) {
         if (!isFocused) {
-            // Reset everything
-            node.classed("dimmed", false);
-            link.style("opacity", null);
+            nodeGroup.classed("dimmed", false).classed("highlighted", false);
+            activeLinks.attr("opacity", l => isUnlocked(l.source.id) ? 1 : 0);
+            particles.attr("opacity", l => isUnlocked(l.source.id) ? 1 : 0);
             return;
         }
 
-        // Identify related nodes (Parents + Children)
+        // Find related
         const related = new Set();
         related.add(d.id);
         (prerequisites.get(d.id) || []).forEach(p => related.add(p));
         (outgoing.get(d.id) || []).forEach(c => related.add(c));
 
-        // Dim unrelated nodes
-        node.classed("dimmed", n => !related.has(n.id));
+        // Dim unrelated
+        nodeGroup.classed("dimmed", n => !related.has(n.id));
+        nodeGroup.classed("highlighted", n => n.id === d.id);
 
-        // Highlight relevant links
-        link.style("opacity", l => {
+        // Dim unrelated links
+        activeLinks.attr("opacity", l => {
             if (l.source.id === d.id || l.target.id === d.id) return 1;
             return 0.05;
         });
+        particles.attr("opacity", l => {
+            if (l.source.id === d.id || l.target.id === d.id) return 1;
+            return 0;
+        });
     }
 
-    node.on("mouseenter", function(e, d) {
+    nodeGroup.on("mouseenter", function(e, d) {
         if(!isUnlocked(d.id)) return;
-
-        // Visual Pop
-        d3.select(this).transition().duration(200).attr("transform", `translate(${d.x},${d.y}) scale(1.05)`);
         
-        // Focus Mode
+        // Pop effect
+        d3.select(this).transition().duration(200)
+            .attr("transform", `translate(${d.x - config.nodeWidth/2},${d.y - config.nodeHeight/2}) scale(1.05)`);
+
         setFocus(d, true);
 
-        // Tooltip
+        // HTML Tooltip
         const prog = calculateProgress(d.id);
+        const color = prog.pct === 100 ? config.colors.mastered.glow : config.colors.unlocked.glow;
+        
         tooltip.innerHTML = `
-            <div style="font-weight:700;margin-bottom:6px;font-size:14px;color:white;">${d.name}</div>
-            <div style="display:flex;justify-content:space-between;font-size:12px;color:#9ca3af;">
-                <span>Mastery</span>
-                <span style="color:${prog.pct===100?'#34d399':'#818cf8'};font-family:'JetBrains Mono'">${Math.round(prog.pct)}%</span>
-            </div>
-            <div style="width:100%;height:4px;background:#333;margin-top:6px;border-radius:2px;overflow:hidden;">
-                <div style="width:${prog.pct}%;height:100%;background:${prog.pct===100?'#34d399':'#6366f1'};"></div>
+            <div style="padding: 12px 16px; border-left: 3px solid ${color}; background: rgba(0,0,0,0.8);">
+                <div style="font-weight:700; font-size:14px; color:white; letter-spacing:0.5px; text-transform:uppercase;">${d.name}</div>
+                <div style="margin-top:6px; display:flex; justify-content:space-between; font-size:11px; color:#a1a1aa; font-family:'JetBrains Mono'">
+                    <span>MASTERY</span>
+                    <span style="color:${color}">${Math.round(prog.pct)}%</span>
+                </div>
+                <!-- Mini Progress Bar -->
+                <div style="width:100%; height:2px; background:#333; margin-top:4px; position:relative;">
+                    <div style="position:absolute; left:0; top:0; height:100%; width:${prog.pct}%; background:${color}; box-shadow: 0 0 10px ${color};"></div>
+                </div>
             </div>
         `;
         tooltip.classList.add("visible");
-        tooltip.style.left = (e.clientX + 20) + "px"; 
-        tooltip.style.top = (e.clientY - 40) + "px";
+        updateTooltipPos(e);
 
     }).on("mouseleave", function(e, d) {
-        d3.select(this).transition().duration(200).attr("transform", `translate(${d.x},${d.y}) scale(1)`);
+        d3.select(this).transition().duration(200)
+            .attr("transform", `translate(${d.x - config.nodeWidth/2},${d.y - config.nodeHeight/2}) scale(1)`);
         setFocus(d, false);
         tooltip.classList.remove("visible");
-    }).on("mousemove", e => { 
-        tooltip.style.left = (e.clientX + 20) + "px"; 
-        tooltip.style.top = (e.clientY - 40) + "px"; 
-    });
+    }).on("mousemove", updateTooltipPos);
 
-    const zoom = d3.zoom().scaleExtent([0.3, 2]).on("zoom", e => g.attr("transform", e.transform));
+    function updateTooltipPos(e) {
+        tooltip.style.left = (e.clientX + 20) + "px"; 
+        tooltip.style.top = (e.clientY - 40) + "px";
+    }
+
+    // --- 10. ZOOM & PAN ---
+    const zoom = d3.zoom()
+        .scaleExtent([0.4, 2])
+        .on("zoom", e => {
+            mainGroup.attr("transform", e.transform);
+            // Parallax the background grid slightly
+            bgGroup.attr("transform", `translate(${e.transform.x * 0.2}, ${e.transform.y * 0.2}) scale(${e.transform.k})`);
+        });
+
     svg.call(zoom);
-    const initialTransform = d3.zoomIdentity.translate(width/2, height/2 + 300).scale(0.65);
+    
+    // Initial Position
+    const initialTransform = d3.zoomIdentity.translate(width/2, height/2 + 300).scale(0.75);
     svg.call(zoom.transform, initialTransform);
     
     document.getElementById("reset-button").onclick = () => {
-        svg.transition().duration(800).call(zoom.transform, initialTransform);
+        svg.transition().duration(1000).call(zoom.transform, initialTransform);
     };
 
     fetchProgress();
