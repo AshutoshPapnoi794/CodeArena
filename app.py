@@ -105,13 +105,19 @@ with app.app_context():
         db.create_all()
         inspector = db.inspect(db.engine)
         columns = [c['name'] for c in inspector.get_columns('solved_problem')]
+        
         if 'next_review_at' not in columns:
             print("⚠️ Migrating Database: Adding next_review_at column...")
             with db.engine.connect() as conn:
-                conn.execute(text("ALTER TABLE solved_problem ADD COLUMN next_review_at DATETIME"))
+                # FIX: Use TIMESTAMP instead of DATETIME for PostgreSQL compatibility
+                # (SQLite also accepts TIMESTAMP, so this works for both)
+                conn.execute(text("ALTER TABLE solved_problem ADD COLUMN next_review_at TIMESTAMP"))
                 conn.execute(text("ALTER TABLE solved_problem ADD COLUMN srs_interval FLOAT DEFAULT 1.0"))
                 conn.commit()
-        print("✅ Database tables checked/created.")
+                print("✅ Migration applied successfully.")
+        else:
+            print("✅ Database schema is up to date.")
+            
     except Exception as e:
         print(f"❌ Database Init Error: {e}")
 
